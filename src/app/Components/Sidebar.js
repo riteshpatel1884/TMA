@@ -9,7 +9,6 @@ const navItems = [
   { id: "dashboard", icon: "⊞", label: "Dashboard" },
   { id: "applications", icon: "☰", label: "Applications" },
   { id: "analytics", icon: "◈", label: "Analytics" },
-  { id: "weekly", icon: "◷", label: "Weekly Report" },
   { id: "resume", icon: "⬡", label: "Resume Matcher" },
   { id: "prep", icon: "◎", label: "Prep Tracker" },
 ];

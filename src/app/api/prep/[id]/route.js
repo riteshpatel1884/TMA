@@ -1,8 +1,8 @@
 // src/app/api/prep/[id]/route.js
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../lib/db";
-import { distributeTopics, daysUntil } from "../../../../../lib/scheduleTopics";
+import { prisma } from "../../../../lib/db";
+import { distributeTopics, daysUntil } from "../../../../lib/scheduleTopics";
 
 // ─── GET /api/prep/[id] ───────────────────────────────────────────────────────
 export async function GET(req, { params }) {

@@ -1,8 +1,8 @@
 // src/app/api/prep/[id]/topics/route.js
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { prisma } from "../../../../../../lib/db";
-import { distributeTopics, daysUntil } from "../../../../../../lib/scheduleTopics";
+import { prisma } from "../../../../../lib/db";
+import { distributeTopics, daysUntil } from "../../../../../lib/scheduleTopics";
 
 // ─── POST /api/prep/[id]/topics ───────────────────────────────────────────────
 // Add one or more topics to an existing tracker and re-distribute day slots.
