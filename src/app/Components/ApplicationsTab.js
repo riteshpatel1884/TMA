@@ -166,7 +166,6 @@ function QuickStats({ applications }) {
     const rate =
       total > 0 ? Math.round(((interviews + offers) / total) * 100) : 0;
 
-    // Platform performance
     const platformMap = {};
     applications.forEach((a) => {
       if (!a.platform || a.platform === "Other") return;
@@ -199,26 +198,11 @@ function QuickStats({ applications }) {
   }, [applications]);
 
   const cards = [
-    {
-      label: "Total Applied",
-      value: stats.total,
-     
-      color: "#6c63ff",
-    },
-    {
-      label: "Interviews",
-      value: stats.interviews,
-     
-      color: "#eab308",
-    },
-    { label: "Offers", value: stats.offers,  color: "#22c55e" },
-    { label: "Rejected", value: stats.rejected,  color: "#ef4444" },
-    {
-      label: "Success Rate",
-      value: `${stats.rate}%`,
-    
-      color: "#3b82f6",
-    },
+    { label: "Total Applied", value: stats.total, color: "#6c63ff" },
+    { label: "Interviews", value: stats.interviews, color: "#eab308" },
+    { label: "Offers", value: stats.offers, color: "#22c55e" },
+    { label: "Rejected", value: stats.rejected, color: "#ef4444" },
+    { label: "Success Rate", value: `${stats.rate}%`, color: "#3b82f6" },
   ];
 
   return (
@@ -246,7 +230,6 @@ function QuickStats({ applications }) {
             gap: 4,
           }}
         >
-          
           <div
             style={{
               fontSize: 22,
@@ -301,7 +284,7 @@ function QuickStats({ applications }) {
               fontWeight: 500,
             }}
           >
-            Best Platform · {stats.bestRate}% response
+            Best Platform &middot; {stats.bestRate}% response
           </div>
         </div>
       )}
@@ -405,9 +388,10 @@ function TagsList({ app }) {
 
 // ── Next Action Cell ──────────────────────────────────────────────────────────
 function NextAction({ app }) {
+  const now = new Date();
   if (app.followUpDate) {
     const due = new Date(app.followUpDate);
-    const isPast = due <= new Date();
+    const isPast = due <= now;
     return (
       <div style={{ fontSize: 11 }}>
         <div style={{ color: isPast ? "#ef4444" : "#eab308", fontWeight: 600 }}>
@@ -444,7 +428,8 @@ function GroupHeader({ label, count }) {
           letterSpacing: "0.5px",
         }}
       >
-        {label} <span style={{ fontWeight: 400, opacity: 0.6 }}>({count})</span>
+        {label}{" "}
+        <span style={{ fontWeight: 400, opacity: 0.6 }}>({count})</span>
       </td>
     </tr>
   );
@@ -466,7 +451,10 @@ export default function ApplicationsTable({
   const [sortBy, setSortBy] = useState("date");
   const [groupBy, setGroupBy] = useState("None");
   const [selectedApp, setSelectedApp] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(null); // { id, company }
+  const [confirmDelete, setConfirmDelete] = useState(null);
+
+  // Capture now once per render to avoid impure calls inside child renders
+  const now = useMemo(() => new Date(), []);
 
   const filtered = useMemo(() => {
     return applications
@@ -531,7 +519,7 @@ export default function ApplicationsTable({
   const getDaysAgo = (dateStr) => {
     if (!dateStr) return null;
     const days = Math.round(
-      (Date.now() - new Date(dateStr)) / (1000 * 60 * 60 * 24),
+      (now - new Date(dateStr)) / (1000 * 60 * 60 * 24),
     );
     if (days === 0) return "Today";
     if (days === 1) return "1d ago";
@@ -540,12 +528,12 @@ export default function ApplicationsTable({
 
   const getDaysSince = (dateStr) => {
     if (!dateStr) return null;
-    return Math.round((Date.now() - new Date(dateStr)) / (1000 * 60 * 60 * 24));
+    return Math.round((now - new Date(dateStr)) / (1000 * 60 * 60 * 24));
   };
 
   const isFollowUpDue = (app) => {
     if (!app.followUpDate || app.status !== "Applied") return false;
-    return new Date(app.followUpDate) <= new Date();
+    return new Date(app.followUpDate) <= now;
   };
 
   const followUpDueCount = filtered.filter(isFollowUpDue).length;
@@ -742,7 +730,7 @@ export default function ApplicationsTable({
                               target="_blank"
                               rel="noopener noreferrer"
                             >
-                              View Job ↗
+                              View Job &#8599;
                             </a>
                           )}
                           {followUpDue && (
@@ -902,7 +890,7 @@ export default function ApplicationsTable({
                                 });
                               }}
                             >
-                              ✕
+                              &times;
                             </button>
                           </div>
                         </td>

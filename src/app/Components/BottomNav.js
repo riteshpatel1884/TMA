@@ -14,7 +14,7 @@ const navItems = [
 ];
 
 const bottomItems = navItems.slice(0, 4);
-const moreItems = navItems.slice(4); // Resume Matcher + Prep Tracker
+const moreItems = navItems.slice(4);
 
 const CHANGELOG = [
   {
@@ -154,7 +154,7 @@ function ChangelogModal({ onClose }) {
                 letterSpacing: "-0.3px",
               }}
             >
-              What's New
+              {"What's New"}
             </div>
             <div
               style={{
@@ -182,7 +182,7 @@ function ChangelogModal({ onClose }) {
               justifyContent: "center",
             }}
           >
-            ✕
+            &times;
           </button>
         </div>
 
@@ -328,7 +328,7 @@ function ChangelogModal({ onClose }) {
                           opacity: 0.75,
                         }}
                       >
-                        ✦ Coming Soon
+                        &#10022; Coming Soon
                       </span>
                       <div
                         style={{
@@ -454,7 +454,7 @@ export default function BottomNav() {
           }`}
           onClick={() => setMoreOpen((p) => !p)}
         >
-          <span className="mobile-tab-icon">•••</span>
+          <span className="mobile-tab-icon">&bull;&bull;&bull;</span>
           <span className="mobile-tab-label">More</span>
         </button>
 
@@ -463,7 +463,7 @@ export default function BottomNav() {
           <>
             <div className="more-backdrop" onClick={() => setMoreOpen(false)} />
             <div className="more-drawer">
-              {/* ── USER SECTION ── */}
+              {/* USER SECTION */}
               {isLoaded && user ? (
                 <div
                   style={{
@@ -525,12 +525,11 @@ export default function BottomNav() {
                       textDecoration: "none",
                     }}
                   >
-                    <span>→</span> Sign in to your account
+                    <span>&rarr;</span> Sign in to your account
                   </Link>
                 </div>
               ) : null}
 
-              {/* Nav items in drawer — Resume Matcher + Prep Tracker */}
               {moreItems.map((item) => {
                 const href = `/${item.id}`;
                 const isActive = pathname === href;
@@ -560,7 +559,6 @@ export default function BottomNav() {
                   width: "100%",
                   padding: "10px 16px",
                   marginTop: 4,
-                  borderTop: "1px solid rgba(255,255,255,0.07)",
                   background: "transparent",
                   border: "none",
                   borderTop: "1px solid rgba(255,255,255,0.07)",
@@ -592,7 +590,7 @@ export default function BottomNav() {
                     fontStyle: "italic",
                   }}
                 >
-                  What's new →
+                  {"What's new \u2192"}
                 </span>
               </button>
             </div>

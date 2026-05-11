@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const PLATFORMS = [
   "LinkedIn",
@@ -21,53 +21,62 @@ const JOB_TYPES = ["Job", "Internship"];
 const APPLY_TYPES = ["Direct Apply", "Referral", "Cold Apply"];
 const PRIORITIES = ["High", "Medium", "Low"];
 
+const DEFAULT_FORM = {
+  company: "",
+  role: "",
+  jobType: "Job",
+  applyType: "Direct Apply",
+  platform: "",
+  jobLink: "",
+  dateApplied: new Date().toISOString().split("T")[0],
+  status: "Applied",
+  workType: "Onsite",
+  priority: "Medium",
+  recruiterName: "",
+  recruiterContact: "",
+  followUpDate: "",
+  salary: "",
+  resumeVersion: "",
+  attachmentLink: "",
+  notes: "",
+};
+
+function buildFormFromData(data) {
+  return {
+    company: data.company || "",
+    role: data.role || "",
+    jobType: data.jobType || "Job",
+    applyType: data.applyType || "Direct Apply",
+    platform: data.platform || "",
+    jobLink: data.jobLink || "",
+    dateApplied: data.dateApplied || new Date().toISOString().split("T")[0],
+    status: data.status || "Applied",
+    workType: data.workType || "Onsite",
+    priority: data.priority || "Medium",
+    recruiterName: data.recruiterName || "",
+    recruiterContact: data.recruiterContact || "",
+    followUpDate: data.followUpDate || "",
+    salary: data.salary || "",
+    resumeVersion: data.resumeVersion || "",
+    attachmentLink: data.attachmentLink || "",
+    notes: data.notes || "",
+  };
+}
+
 export default function AddJobModal({ onClose, onSave, initialData }) {
-  const [form, setForm] = useState({
-    company: "",
-    role: "",
-    jobType: "Job",
-    applyType: "Direct Apply",
-    platform: "",
-    jobLink: "",
-    dateApplied: new Date().toISOString().split("T")[0],
-    status: "Applied",
-    workType: "Onsite",
-    priority: "Medium",
-    recruiterName: "",
-    recruiterContact: "",
-    followUpDate: "",
-    salary: "",
-    resumeVersion: "",
-    attachmentLink: "",
-    notes: "",
-  });
+  const [form, setForm] = useState(() =>
+    initialData ? buildFormFromData(initialData) : { ...DEFAULT_FORM }
+  );
 
   useEffect(() => {
     if (initialData) {
-      setForm({
-        company: initialData.company || "",
-        role: initialData.role || "",
-        jobType: initialData.jobType || "Job",
-        applyType: initialData.applyType || "Direct Apply",
-        platform: initialData.platform || "",
-        jobLink: initialData.jobLink || "",
-        dateApplied:
-          initialData.dateApplied || new Date().toISOString().split("T")[0],
-        status: initialData.status || "Applied",
-        workType: initialData.workType || "Onsite",
-        priority: initialData.priority || "Medium",
-        recruiterName: initialData.recruiterName || "",
-        recruiterContact: initialData.recruiterContact || "",
-        followUpDate: initialData.followUpDate || "",
-        salary: initialData.salary || "",
-        resumeVersion: initialData.resumeVersion || "",
-        attachmentLink: initialData.attachmentLink || "",
-        notes: initialData.notes || "",
-      });
+      setForm(buildFormFromData(initialData));
+    } else {
+      setForm({ ...DEFAULT_FORM });
     }
   }, [initialData]);
 
-  const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const set = useCallback((key, val) => setForm((f) => ({ ...f, [key]: val })), []);
 
   const handleSubmit = () => {
     if (!form.company.trim() || !form.role.trim()) return;
@@ -85,7 +94,7 @@ export default function AddJobModal({ onClose, onSave, initialData }) {
             {initialData ? "Edit Application" : "Add Application"}
           </div>
           <button className="modal-close" onClick={onClose}>
-            ×
+            &times;
           </button>
         </div>
         <div className="modal-body">
@@ -205,7 +214,7 @@ export default function AddJobModal({ onClose, onSave, initialData }) {
 
           {/* Section: Priority & Follow-up */}
           <div className="modal-section-label" style={{ marginTop: 8 }}>
-            Priority & Follow-up
+            Priority &amp; Follow-up
           </div>
           <div className="form-row">
             <div className="form-group">
@@ -271,7 +280,7 @@ export default function AddJobModal({ onClose, onSave, initialData }) {
 
           {/* Section: Salary & Resume */}
           <div className="modal-section-label" style={{ marginTop: 8 }}>
-            Salary & Resume
+            Salary &amp; Resume
           </div>
           <div className="form-row">
             <div className="form-group">

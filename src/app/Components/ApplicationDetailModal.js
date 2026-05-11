@@ -30,10 +30,12 @@ function DetailSection({ title, children }) {
 export default function ApplicationDetailModal({ app, onClose, onEdit }) {
   if (!app) return null;
 
+  const now = new Date();
+
   const getDaysSince = (dateStr) => {
     if (!dateStr) return null;
     const days = Math.round(
-      (Date.now() - new Date(dateStr)) / (1000 * 60 * 60 * 24),
+      (now - new Date(dateStr)) / (1000 * 60 * 60 * 24),
     );
     if (days === 0) return "Today";
     if (days === 1) return "1 day ago";
@@ -43,10 +45,11 @@ export default function ApplicationDetailModal({ app, onClose, onEdit }) {
   const isFollowUpDue =
     app.followUpDate &&
     app.status === "Applied" &&
-    new Date(app.followUpDate) <= new Date();
+    new Date(app.followUpDate) <= now;
+
   const daysSinceApplied = app.dateApplied
     ? Math.round(
-        (Date.now() - new Date(app.dateApplied)) / (1000 * 60 * 60 * 24),
+        (now - new Date(app.dateApplied)) / (1000 * 60 * 60 * 24),
       )
     : null;
 
@@ -121,7 +124,7 @@ export default function ApplicationDetailModal({ app, onClose, onEdit }) {
               Edit
             </button>
             <button className="modal-close" onClick={onClose}>
-              ×
+              &times;
             </button>
           </div>
         </div>
@@ -130,7 +133,7 @@ export default function ApplicationDetailModal({ app, onClose, onEdit }) {
           {/* Follow-up alert */}
           {isFollowUpDue && (
             <div className="detail-alert">
-              ⚡ Follow-up is due —{" "}
+              &#9889; Follow-up is due &mdash;{" "}
               {new Date(app.followUpDate).toLocaleDateString("en-IN", {
                 day: "2-digit",
                 month: "short",
@@ -232,7 +235,7 @@ export default function ApplicationDetailModal({ app, onClose, onEdit }) {
                               rel="noopener noreferrer"
                               style={{ color: "var(--accent)" }}
                             >
-                              LinkedIn ↗
+                              LinkedIn &#8599;
                             </a>
                           ) : (
                             <a
@@ -253,7 +256,7 @@ export default function ApplicationDetailModal({ app, onClose, onEdit }) {
                 )}
               </DetailSection>
 
-              <DetailSection title="Resume & Links">
+              <DetailSection title="Resume &amp; Links">
                 <DetailRow label="Resume Version" value={app.resumeVersion} />
                 {app.jobLink && (
                   <div className="detail-row">
@@ -265,7 +268,7 @@ export default function ApplicationDetailModal({ app, onClose, onEdit }) {
                         rel="noopener noreferrer"
                         style={{ color: "var(--accent)" }}
                       >
-                        View Posting ↗
+                        View Posting &#8599;
                       </a>
                     </span>
                   </div>
@@ -280,7 +283,7 @@ export default function ApplicationDetailModal({ app, onClose, onEdit }) {
                         rel="noopener noreferrer"
                         style={{ color: "var(--accent)" }}
                       >
-                        Open Link ↗
+                        Open Link &#8599;
                       </a>
                     </span>
                   </div>
@@ -322,7 +325,7 @@ export default function ApplicationDetailModal({ app, onClose, onEdit }) {
                           month: "short",
                           year: "numeric",
                         })}
-                        {" · "}
+                        {" \u00b7 "}
                         {getDaysSince(entry.date)}
                       </span>
                     </div>
