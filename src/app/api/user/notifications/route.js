@@ -3,7 +3,7 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "../../../../lib/db";
 
 export async function PATCH(req) {
   const { userId } = auth();
