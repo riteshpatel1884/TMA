@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Application {
+  id               String    @id @default(cuid())
+  clerkUserId      String    @map("clerk_user_id")
+  company          String
+  role             String
+  jobType          String    @default("Job") @map("job_type")
+  applyType        String    @default("Direct Apply") @map("apply_type")
+  platform         String?
+  jobLink          String?   @map("job_link")
+  dateApplied      DateTime? @map("date_applied") @db.Date
+  status           String    @default("Applied")
+  workType         String    @default("Onsite") @map("work_type")
+  priority         String    @default("Medium")
+  recruiterName    String?   @map("recruiter_name")
+  recruiterContact String?   @map("recruiter_contact")
+  followUpDate     DateTime? @map("follow_up_date") @db.Date
+  salary           String?
+  resumeVersion    String?   @map("resume_version")
+  attachmentLink   String?   @map("attachment_link")
+  notes            String?
+  statusHistory    Json      @default("[]") @map("status_history")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relation to prep trackers
+  prepTrackers     PrepTracker[]
+
+  @@index([clerkUserId])
+  @@index([clerkUserId, status])
+  @@map("applications")
+}
+
+// One prep tracker per round per company (e.g. TCS NQT Aptitude, Infosys Reasoning)
+model PrepTracker {
+  id            String    @id @default(cuid())
+  clerkUserId   String    @map("clerk_user_id")
+
+  // Optional link to an application
+  applicationId String?   @map("application_id")
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  // Company name — stored separately so tracker can exist without an application
+  companyName   String    @map("company_name")
+
+  // Round details
+  roundName     String    @default("Aptitude") @map("round_name") // e.g. "Aptitude", "Coding", "GD"
+  roundDate     DateTime? @map("round_date") @db.Date            // the exam date
+
+  // Progress snapshot (denormalised for quick reads)
+  totalTopics   Int       @default(0) @map("total_topics")
+  doneTopics    Int       @default(0) @map("done_topics")
+
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  topics        PrepTopic[]
+
+  @@index([clerkUserId])
+  @@index([applicationId])
+  @@map("prep_trackers")
+}
+
+// Every topic inside a prep tracker (e.g. "Number System", "Permutations")
+model PrepTopic {
+  id            String      @id @default(cuid())
+  trackerId     String      @map("tracker_id")
+  tracker       PrepTracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+
+  name          String                        // topic name
+  category      String?                       // e.g. "Quantitative", "Verbal", "Logical"
+  isCustom      Boolean     @default(false)   @map("is_custom")  // false = from default list
+  order         Int         @default(0)       // display order
+
+  // Which day slot this topic is assigned to (1-based, null = unscheduled)
+  daySlot       Int?        @map("day_slot")
+
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  dailyLogs     DailyTopicLog[]
+
+  @@index([trackerId])
+  @@map("prep_topics")
+}
+
+// Each time a user marks/unmarks a topic as done for a specific date
+model DailyTopicLog {
+  id          String     @id @default(cuid())
+  topicId     String     @map("topic_id")
+  topic       PrepTopic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  // The calendar date this completion belongs to
+  logDate     DateTime   @map("log_date") @db.Date
+  completed   Boolean    @default(true)
+
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  // One log per topic per day
+  @@unique([topicId, logDate])
+  @@index([topicId])
+  @@map("daily_topic_logs")
+}

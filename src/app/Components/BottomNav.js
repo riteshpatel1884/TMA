@@ -11,16 +11,36 @@ const navItems = [
   { id: "analytics", icon: "◈", label: "Analytics" },
   { id: "weekly", icon: "◷", label: "Weekly Report" },
   { id: "resume", icon: "⬡", label: "Resume Matcher" },
+  { id: "prep", icon: "◎", label: "Prep Tracker" },
 ];
 
 const bottomItems = navItems.slice(0, 4);
-const moreItems = navItems.slice(4);
+const moreItems = navItems.slice(4); // Resume Matcher + Prep Tracker
 
 const CHANGELOG = [
   {
-    version: "v1.2.0",
+    version: "v1.3.0",
     date: "Coming Soon",
     tag: "next",
+    changes: [
+      {
+        type: "upcoming",
+        text: "Prep Tracker — daily aptitude study plans linked to your applications",
+      },
+      {
+        type: "upcoming",
+        text: "Topic scheduling — auto-distributes syllabus across available days",
+      },
+      {
+        type: "upcoming",
+        text: "Daily checkmarks — mark topics done day by day with progress tracking",
+      },
+    ],
+  },
+  {
+    version: "v1.2.0",
+    date: "Coming Soon",
+    tag: null,
     changes: [
       {
         type: "upcoming",
@@ -444,7 +464,7 @@ export default function BottomNav() {
           <>
             <div className="more-backdrop" onClick={() => setMoreOpen(false)} />
             <div className="more-drawer">
-              {/* ── USER SECTION — top of drawer ── */}
+              {/* ── USER SECTION ── */}
               {isLoaded && user ? (
                 <div
                   style={{
@@ -511,7 +531,7 @@ export default function BottomNav() {
                 </div>
               ) : null}
 
-              {/* Nav items in drawer */}
+              {/* Nav items in drawer — Resume Matcher + Prep Tracker */}
               {moreItems.map((item) => {
                 const href = `/${item.id}`;
                 const isActive = pathname === href;
@@ -528,7 +548,7 @@ export default function BottomNav() {
                 );
               })}
 
-              {/* Version / changelog button */}
+              {/* Version / changelog */}
               <button
                 onClick={() => {
                   setMoreOpen(false);
@@ -544,6 +564,7 @@ export default function BottomNav() {
                   borderTop: "1px solid rgba(255,255,255,0.07)",
                   background: "transparent",
                   border: "none",
+                  borderTop: "1px solid rgba(255,255,255,0.07)",
                   cursor: "pointer",
                   transition: "background 0.15s",
                 }}

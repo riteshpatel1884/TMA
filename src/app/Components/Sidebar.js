@@ -11,13 +11,33 @@ const navItems = [
   { id: "analytics", icon: "◈", label: "Analytics" },
   { id: "weekly", icon: "◷", label: "Weekly Report" },
   { id: "resume", icon: "⬡", label: "Resume Matcher" },
+  { id: "prep", icon: "◎", label: "Prep Tracker" },
 ];
 
 const CHANGELOG = [
   {
-    version: "v1.2.0",
+    version: "v1.3.0",
     date: "Coming Soon",
     tag: "next",
+    changes: [
+      {
+        type: "upcoming",
+        text: "Prep Tracker — daily aptitude study plans linked to your applications",
+      },
+      {
+        type: "upcoming",
+        text: "Topic scheduling — auto-distributes syllabus across available days",
+      },
+      {
+        type: "upcoming",
+        text: "Daily checkmarks — mark topics done day by day with progress tracking",
+      },
+    ],
+  },
+  {
+    version: "v1.2.0",
+    date: "Coming Soon",
+    tag: null,
     changes: [
       {
         type: "upcoming",
@@ -97,7 +117,7 @@ function ChangelogModal({ onClose }) {
           transform: "translate(-50%, -50%)",
           width: "min(520px, 92vw)",
           maxHeight: "80vh",
-          background: "var(--surface, #13141f)",
+          background: "var(--bg-card, #13141f)",
           border: "1px solid var(--border, rgba(255,255,255,0.08))",
           borderRadius: 16,
           display: "flex",
@@ -181,10 +201,10 @@ function ChangelogModal({ onClose }) {
         >
           {CHANGELOG.map((release, i) => {
             const regularChanges = release.changes.filter(
-              (c) => c.type !== "upcoming",
+              (c) => c.type !== "upcoming"
             );
             const upcomingChanges = release.changes.filter(
-              (c) => c.type === "upcoming",
+              (c) => c.type === "upcoming"
             );
             return (
               <div key={release.version}>
@@ -459,7 +479,7 @@ export default function Sidebar() {
           <div className="nav-section-label">Navigation</div>
           {navItems.map((item) => {
             const href = `/${item.id}`;
-            const isActive = pathname === href;
+            const isActive = pathname === href || pathname.startsWith(`/${item.id}/`);
             return (
               <Link
                 key={item.id}
@@ -484,7 +504,7 @@ export default function Sidebar() {
             gap: 12,
           }}
         >
-          {/* User row — avatar + name/email + UserButton */}
+          {/* User row */}
           {isLoaded && user ? (
             <div
               style={{
@@ -497,9 +517,7 @@ export default function Sidebar() {
                 border: "1px solid rgba(255,255,255,0.06)",
               }}
             >
-              {/* Clerk UserButton on the left */}
               <UserButton afterSignOutUrl="/sign-in" />
-              {/* Name + email */}
               <div style={{ flex: 1, overflow: "hidden" }}>
                 <p
                   style={{
@@ -563,6 +581,7 @@ export default function Sidebar() {
 
           {/* Version / changelog button */}
           <button
+            suppressHydrationWarning
             onClick={() => setShowChangelog(true)}
             style={{
               display: "flex",
