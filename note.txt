@@ -1,1 +1,126 @@
-I just made a placement tracker for my own problem solinf where i can track my all applied applications in companies in nextjs with javascript. so i want to make one more section where i can track my daily goal for that comapy like trakcing aptitude preparation for that comapny like how much i need to cover suppoern if aptitude roud is on 9 june then till 8 june total syllabus. topics and all other are there and how much i need to do how much topics each day to finsih./ so for thsi create a section where i as a user can fill all the topics or auto add the common aptitude topcics and also allow user to add custon topics. with no of days remaing or enter a date when the apti round is there(allow both option ) and then distribue each topic acc to no of days reamining. and also allow user to checkmark erach day topics like this. also u can add more things to improve it. create a scherma for this also. and connect this preparation to that applied company schema, like i added tcs nqt tracker then and  then when i came back to fill topcs of aptitude add an option to whcih compamy in am preprating from from the list of my added comapny tracker like this. 
+
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── User (synced from Clerk via webhook) ────────────────────────────────────
+model User {
+  id                 String   @id @default(cuid())
+  clerkUserId        String   @unique @map("clerk_user_id")
+  email              String   @unique
+  name               String?
+  emailNotifications Boolean  @default(true) @map("email_notifications")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  applications  Application[]
+  prepTrackers  PrepTracker[]
+
+  @@map("users")
+}
+
+model Application {
+  id               String    @id @default(cuid())
+  clerkUserId      String    @map("clerk_user_id")
+  user             User      @relation(fields: [clerkUserId], references: [clerkUserId])
+  company          String
+  role             String
+  jobType          String    @default("Job") @map("job_type")
+  applyType        String    @default("Direct Apply") @map("apply_type")
+  platform         String?
+  jobLink          String?   @map("job_link")
+  dateApplied      DateTime? @map("date_applied") @db.Date
+  status           String    @default("Applied")
+  workType         String    @default("Onsite") @map("work_type")
+  priority         String    @default("Medium")
+  recruiterName    String?   @map("recruiter_name")
+  recruiterContact String?   @map("recruiter_contact")
+  followUpDate     DateTime? @map("follow_up_date") @db.Date
+  salary           String?
+  resumeVersion    String?   @map("resume_version")
+  attachmentLink   String?   @map("attachment_link")
+  notes            String?
+  statusHistory    Json      @default("[]") @map("status_history")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  prepTrackers     PrepTracker[]
+
+  @@index([clerkUserId])
+  @@index([clerkUserId, status])
+  @@map("applications")
+}
+
+// One prep tracker per round per company (e.g. TCS NQT Aptitude, Infosys Reasoning)
+model PrepTracker {
+  id            String    @id @default(cuid())
+  clerkUserId   String    @map("clerk_user_id")
+  user          User      @relation(fields: [clerkUserId], references: [clerkUserId])
+
+  // Optional link to an application
+  applicationId String?      @map("application_id")
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  // Company name — stored separately so tracker can exist without an application
+  companyName   String    @map("company_name")
+
+  // Round details
+  roundName     String    @default("Aptitude") @map("round_name")
+  roundDate     DateTime? @map("round_date") @db.Date
+
+  // Progress snapshot (denormalised for quick reads)
+  totalTopics   Int       @default(0) @map("total_topics")
+  doneTopics    Int       @default(0) @map("done_topics")
+
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  topics        PrepTopic[]
+
+  @@index([clerkUserId])
+  @@index([applicationId])
+  @@map("prep_trackers")
+}
+
+// Every topic inside a prep tracker (e.g. "Number System", "Permutations")
+model PrepTopic {
+  id        String      @id @default(cuid())
+  trackerId String      @map("tracker_id")
+  tracker   PrepTracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+
+  name      String
+  category  String?
+  isCustom  Boolean  @default(false) @map("is_custom")
+  order     Int      @default(0)
+  daySlot   Int?     @map("day_slot")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  dailyLogs DailyTopicLog[]
+
+  @@index([trackerId])
+  @@map("prep_topics")
+}
+
+// Each time a user marks/unmarks a topic as done for a specific date
+model DailyTopicLog {
+  id        String    @id @default(cuid())
+  topicId   String    @map("topic_id")
+  topic     PrepTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  logDate   DateTime @map("log_date") @db.Date
+  completed Boolean  @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([topicId, logDate])
+  @@index([topicId])
+  @@map("daily_topic_logs")
+}

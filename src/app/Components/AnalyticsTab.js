@@ -17,7 +17,79 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ScatterChart,
+  Scatter,
+  ZAxis,
 } from "recharts";
+
+// ── Kill ALL Recharts focus outlines & white backgrounds globally ─────────
+const RECHARTS_RESET = `
+  /* Nuclear option: remove every outline/bg from recharts tree */
+  .recharts-wrapper,
+  .recharts-wrapper *,
+  .recharts-surface,
+  .recharts-surface *,
+  svg.recharts-surface,
+  .recharts-layer,
+  .recharts-layer *,
+  .recharts-responsive-container,
+  .recharts-responsive-container * {
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+    -webkit-focus-ring-color: transparent !important;
+  }
+  .recharts-wrapper,
+  .recharts-wrapper:focus,
+  .recharts-wrapper:focus-within,
+  .recharts-wrapper:focus-visible,
+  .recharts-wrapper:active,
+  .recharts-surface:focus,
+  .recharts-surface:active,
+  svg.recharts-surface:focus,
+  svg.recharts-surface:active {
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+  /* The inner <div> recharts wraps the SVG in */
+  .recharts-wrapper > div {
+    outline: none !important;
+    background: transparent !important;
+  }
+  /* SVG itself and background rect */
+  .recharts-surface,
+  .recharts-surface > rect:first-child {
+    fill: transparent !important;
+    background: transparent !important;
+  }
+  /* Kill all interactive element focus rings */
+  .recharts-sector:focus,
+  .recharts-sector:focus-visible,
+  .recharts-bar-rectangle:focus,
+  .recharts-bar-rectangle:focus-visible,
+  .recharts-curve:focus,
+  .recharts-dot:focus,
+  .recharts-dot:focus-visible,
+  .recharts-symbols:focus {
+    outline: none !important;
+    stroke: none !important;
+  }
+  /* Kill the grey/white hover rectangle on bar charts */
+  .recharts-rectangle.recharts-tooltip-cursor {
+    fill: rgba(255,255,255,0.04) !important;
+  }
+  /* Pie sector active stroke (white ring on click) */
+  .recharts-pie-sector path:focus,
+  .recharts-pie-sector path:active {
+    outline: none !important;
+    stroke: none !important;
+  }
+`;
 
 const MIN_DATA_THRESHOLD = 5;
 
@@ -40,6 +112,79 @@ function getWeekKey(dateStr) {
   return monday.toISOString().slice(0, 10);
 }
 
+// ── Shared tooltip style (dark, no white bg) ──────────────────────────────
+const tooltipStyle = {
+  background: "rgba(20,20,25,0.96)",
+  border: "1px solid rgba(108,99,255,0.25)",
+  borderRadius: 10,
+  boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+  padding: "10px 14px",
+  fontFamily: "'DM Sans', sans-serif",
+  fontSize: 12,
+  color: "#f0f0f2",
+  outline: "none",
+};
+
+const tooltipLabelStyle = {
+  color: "#f0f0f2",
+  fontWeight: 700,
+  fontFamily: "'Syne', sans-serif",
+  fontSize: 12,
+  marginBottom: 4,
+};
+
+// Custom Tooltip renderer
+function CustomTooltip({ active, payload, label, formatter }) {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={tooltipStyle}>
+      {label && <div style={tooltipLabelStyle}>{label}</div>}
+      {payload.map((p, i) => (
+        <div key={i} style={{ color: p.color || "#a5b4fc", marginTop: 2 }}>
+          <span style={{ color: "#8b8b9a", marginRight: 6 }}>{p.name}:</span>
+          {formatter ? formatter(p.value, p.name) : p.value}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Shared chart card wrapper ─────────────────────────────────────────────
+function ChartCard({ title, children, style }) {
+  return (
+    <div
+      tabIndex={-1}
+      style={{
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        padding: "20px",
+        marginBottom: 16,
+        outline: "none",
+        userSelect: "none",
+        WebkitTapHighlightColor: "transparent",
+        ...style,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "'Syne', sans-serif",
+          fontSize: 11,
+          fontWeight: 700,
+          color: "var(--text-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.8px",
+          marginBottom: 16,
+        }}
+      >
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Metric cards ──────────────────────────────────────────────────────────
 function MetricCard({ label, value, sub, color, lowData }) {
   return (
     <div className="stat-card" style={{ position: "relative" }}>
@@ -52,14 +197,7 @@ function MetricCard({ label, value, sub, color, lowData }) {
       </div>
       {sub && <div className="stat-sub">{sub}</div>}
       {lowData && (
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 10,
-            color: "var(--text-muted)",
-            fontStyle: "italic",
-          }}
-        >
+        <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
           Based on {lowData} application{lowData !== 1 ? "s" : ""}
         </div>
       )}
@@ -67,269 +205,110 @@ function MetricCard({ label, value, sub, color, lowData }) {
   );
 }
 
-function ProgressRow({ label, sublabel, value, max, color, right }) {
-  const pctWidth = max > 0 ? Math.max((value / max) * 100, 1) : 1;
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 5,
-        }}
-      >
-        <div>
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--text-secondary)",
-              fontWeight: 500,
-            }}
-          >
-            {label}
-          </span>
-          {sublabel && (
-            <span
-              style={{
-                fontSize: 11,
-                color: "var(--text-muted)",
-                marginLeft: 6,
-              }}
-            >
-              {sublabel}
-            </span>
-          )}
-        </div>
-        <span style={{ fontSize: 11, color: color || "var(--text-muted)" }}>
-          {right}
-        </span>
-      </div>
-      <div className="progress-bar-wrap">
-        <div
-          className="progress-bar"
-          style={{
-            width: `${pctWidth}%`,
-            background: color || "var(--accent)",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
+// ── Application Funnel ─────────────────────────────────────────────────────
 function Funnel({ byStatus, total }) {
   const steps = [
-    { label: "Applied", key: "Applied", color: "var(--blue)" },
-    { label: "Interview", key: "Interview", color: "var(--yellow)" },
-    { label: "Offer", key: "Offer", color: "var(--green)" },
+    { label: "Applied", key: "Applied", color: "#3b82f6" },
+    { label: "Interview", key: "Interview", color: "#f59e0b" },
+    { label: "Offer", key: "Offer", color: "#22c55e" },
   ];
 
   return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <div className="card-title">Application Funnel</div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 0,
-          marginTop: 8,
-          overflowX: "auto",
-        }}
-      >
+    <ChartCard title="Application Funnel">
+      <div style={{ display: "flex", alignItems: "center", gap: 0, overflowX: "auto" }}>
         {steps.map((step, i) => {
           const count = byStatus[step.key] || 0;
           const prevCount = i === 0 ? total : byStatus[steps[i - 1].key] || 0;
-          const convRate =
-            i > 0 && prevCount > 0 ? pct(count, prevCount) : null;
-
+          const convRate = i > 0 && prevCount > 0 ? pct(count, prevCount) : null;
           return (
-            <div
-              key={step.key}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                flex: 1,
-                minWidth: 90,
-              }}
-            >
+            <div key={step.key} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 90 }}>
               <div style={{ flex: 1 }}>
                 {convRate !== null && (
-                  <div
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-muted)",
-                      textAlign: "center",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {convRate}% conversion.
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", marginBottom: 4 }}>
+                    {convRate}% conv.
                   </div>
                 )}
                 <div
                   style={{
-                    height: 44,
+                    height: 48,
                     background: step.color,
-                    opacity: 0.15 + (count / (total || 1)) * 0.7,
-                    borderRadius:
-                      i === 0
-                        ? "8px 0 0 8px"
-                        : i === steps.length - 1
-                          ? "0 8px 8px 0"
-                          : 0,
+                    opacity: 0.18 + (count / (total || 1)) * 0.7,
+                    borderRadius: i === 0 ? "8px 0 0 8px" : i === steps.length - 1 ? "0 8px 8px 0" : 0,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    transition: "opacity 0.3s",
                     border: `1px solid ${step.color}`,
                     borderRight: i < steps.length - 1 ? "none" : undefined,
                   }}
                 >
-                  <span
-                    style={{ fontSize: 18, fontWeight: 800, color: "#ffffff" }}
-                  >
-                    {count}
-                  </span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>{count}</span>
                 </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                    textAlign: "center",
-                    marginTop: 6,
-                  }}
-                >
+                <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>
                   {step.label}
                 </div>
               </div>
               {i < steps.length - 1 && (
-                <div
-                  style={{
-                    width: 0,
-                    height: 0,
-                    borderTop: "22px solid transparent",
-                    borderBottom: "22px solid transparent",
-                    borderLeft: `14px solid ${step.color}`,
-                    opacity: 0.4,
-                    flexShrink: 0,
-                    zIndex: 1,
-                  }}
-                />
+                <div style={{
+                  width: 0, height: 0,
+                  borderTop: "24px solid transparent",
+                  borderBottom: "24px solid transparent",
+                  borderLeft: `14px solid ${step.color}`,
+                  opacity: 0.45, flexShrink: 0, zIndex: 1,
+                }} />
               )}
             </div>
           );
         })}
       </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          marginTop: 10,
-          fontSize: 11,
-          color: "var(--text-muted)",
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10, fontSize: 11, color: "var(--text-muted)" }}>
         Rejected: {byStatus.Rejected || 0}
       </div>
-    </div>
+    </ChartCard>
   );
 }
 
-function InsightsBox({ stats, applications }) {
+// ── Insights box ──────────────────────────────────────────────────────────
+function InsightsBox({ stats }) {
   const insights = useMemo(() => {
     const list = [];
-
     const best = stats.platformPerf[0];
-    if (best && parseFloat(best.rate) > 0 && best.total >= 1) {
-      list.push(
-        `${best.name} has your best response rate at ${best.rate}% — prioritise it.`,
-      );
-    }
-
-    if (stats.byStatus.Offer === 0 && stats.total >= 3) {
-      list.push(
-        "No offers yet. Consider refining your resume or increasing application volume.",
-      );
-    }
-
-    const workEntries = Object.entries(stats.byWorkType).sort(
-      (a, b) => b[1] - a[1],
-    );
+    if (best && parseFloat(best.rate) > 0 && best.total >= 1)
+      list.push(`${best.name} has your best response rate at ${best.rate}% — prioritise it.`);
+    if (stats.byStatus.Offer === 0 && stats.total >= 3)
+      list.push("No offers yet. Consider refining your resume or increasing application volume.");
+    const workEntries = Object.entries(stats.byWorkType).sort((a, b) => b[1] - a[1]);
     if (workEntries.length > 0) {
       const [topType, topCount] = workEntries[0];
       const topPct = Math.round((topCount / stats.total) * 100);
       if (topPct >= 80) {
         const alt = topType === "Onsite" ? "Remote or Hybrid" : "Onsite";
-        list.push(
-          `${topPct}% of applications are ${topType} — consider exploring ${alt} roles.`,
-        );
+        list.push(`${topPct}% of applications are ${topType} — consider exploring ${alt} roles.`);
       }
     }
-
-    if (stats.avgResponseDays !== null && stats.avgResponseDays > 14) {
-      list.push(
-        `Average response time is ${stats.avgResponseDays} days — follow up on older applications.`,
-      );
-    }
-
+    if (stats.avgResponseDays !== null && stats.avgResponseDays > 14)
+      list.push(`Average response time is ${stats.avgResponseDays} days — follow up on older applications.`);
     const cbRate = parseFloat(stats.callbackRate);
-    if (stats.total >= 5 && cbRate < 10) {
-      list.push(
-        `Callback rate is ${stats.callbackRate}%. Tailoring your applications per role may improve this.`,
-      );
-    }
-
-    if (list.length === 0) {
+    if (stats.total >= 5 && cbRate < 10)
+      list.push(`Callback rate is ${stats.callbackRate}%. Tailoring your applications per role may improve this.`);
+    if (list.length === 0)
       list.push("Add more applications to unlock personalised insights.");
-    }
-
     return list;
-  }, [stats, applications]);
+  }, [stats]);
 
   return (
-    <div
-      style={{
-        background: "var(--accent-dim)",
-        border: "1px solid var(--accent-border)",
-        borderRadius: "var(--radius)",
-        padding: "16px 20px",
-        marginBottom: 16,
-      }}
-    >
-      <div
-        style={{
-          fontFamily: "'Syne', sans-serif",
-          fontSize: 11,
-          fontWeight: 700,
-          color: "var(--accent)",
-          textTransform: "uppercase",
-          letterSpacing: "0.8px",
-          marginBottom: 12,
-        }}
-      >
-        Insights
+    <div style={{
+      background: "rgba(108,99,255,0.07)",
+      border: "1px solid rgba(108,99,255,0.2)",
+      borderRadius: "var(--radius)",
+      padding: "16px 20px",
+      marginBottom: 20,
+    }}>
+      <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 11, fontWeight: 700, color: "#6c63ff", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 12 }}>
+        ✦ Insights
       </div>
-      <ul
-        style={{
-          margin: 0,
-          padding: 0,
-          listStyle: "none",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
+      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
         {insights.map((text, i) => (
-          <li
-            key={i}
-            style={{
-              fontSize: 13,
-              color: "var(--text-secondary)",
-              lineHeight: 1.6,
-              paddingLeft: 14,
-              borderLeft: "2px solid var(--accent)",
-            }}
-          >
+          <li key={i} style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, paddingLeft: 14, borderLeft: "2px solid #6c63ff" }}>
             {text}
           </li>
         ))}
@@ -338,256 +317,198 @@ function InsightsBox({ stats, applications }) {
   );
 }
 
-// ── Enhanced Charts ────────────────────────────────────────────────────────
+// ── 1. Status Distribution — Donut ────────────────────────────────────────
+const STATUS_COLORS = { Applied: "#3b82f6", Interview: "#f59e0b", Offer: "#22c55e", Rejected: "#ef4444" };
 
-function StatusDistributionChart({ byStatus, total }) {
-  const data = [
-    { name: "Applied", value: byStatus.Applied || 0, fill: "#3b82f6" },
-    { name: "Interview", value: byStatus.Interview || 0, fill: "#f59e0b" },
-    { name: "Offer", value: byStatus.Offer || 0, fill: "#10b981" },
-    { name: "Rejected", value: byStatus.Rejected || 0, fill: "#ef4444" },
-  ].filter((item) => item.value > 0);
+function StatusDonutChart({ byStatus }) {
+  const data = Object.entries(byStatus)
+    .filter(([, v]) => v > 0)
+    .map(([name, value]) => ({ name, value, fill: STATUS_COLORS[name] || "#6c63ff" }));
 
-  if (data.length === 0) {
+  if (!data.length) return null;
+
+  const RADIAN = Math.PI / 180;
+  const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, name, percent }) => {
+    const r = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + r * Math.cos(-midAngle * RADIAN);
+    const y = cy + r * Math.sin(-midAngle * RADIAN);
+    if (percent < 0.06) return null;
     return (
-      <div className="card">
-        <div className="card-title">Application Status</div>
-        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-          No data available.
-        </div>
-      </div>
+      <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={700}>
+        {`${(percent * 100).toFixed(0)}%`}
+      </text>
     );
-  }
+  };
 
   return (
-    <div className="card">
-      <div className="card-title">Application Status Distribution</div>
-      <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie
+    <ChartCard title="Status Distribution">
+      <ResponsiveContainer width="100%" height={260} style={{ background: "transparent", outline: "none" }}>
+        <PieChart style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <Pie isAnimationActive={false}
             data={data}
             cx="50%"
             cy="50%"
-            labelLine={false}
-            label={({ name, percent }) =>
-              `${name} ${(percent * 100).toFixed(0)}%`
-            }
-            outerRadius={80}
-            fill="#8884d8"
+            innerRadius={65}
+            outerRadius={100}
+            paddingAngle={3}
             dataKey="value"
+            labelLine={false}
+            label={renderLabel}
+            stroke="none"
+            style={{ outline: "none", background: "transparent" }} tabIndex={-1}
           >
-            {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.fill} />
+            {data.map((entry, i) => (
+              <Cell key={i} fill={entry.fill} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
             ))}
           </Pie>
-          <Tooltip formatter={(value) => `${value} applications`} />
+          <Tooltip
+            content={<CustomTooltip formatter={(v) => `${v} applications`} />}
+          />
+          <Legend
+            iconType="circle"
+            iconSize={8}
+            formatter={(value) => <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{value}</span>}
+          />
         </PieChart>
       </ResponsiveContainer>
-    </div>
+    </ChartCard>
   );
 }
 
-function TagsVisualization({ topTags, total }) {
-  if (!topTags || topTags.length === 0) {
-    return (
-      <div className="card">
-        <div className="card-title">Top Application Tags</div>
-        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-          No tags available.
-        </div>
-      </div>
-    );
-  }
-
-  const data = topTags.map(([tag, count]) => ({
-    name: tag,
-    count: count,
-    percentage: Math.round((count / total) * 100),
-  }));
-
-  return (
-    <div className="card">
-      <div className="card-title">Top Application Tags</div>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey="name" stroke="var(--text-muted)" />
-          <YAxis stroke="var(--text-muted)" />
-          <Tooltip
-            formatter={(value) => `${value} applications`}
-            contentStyle={{
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border)",
-            }}
-          />
-          <Bar dataKey="count" fill="var(--accent)" radius={[8, 8, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function WorkTypeVisualization({ byWorkType, total }) {
-  if (!byWorkType || Object.keys(byWorkType).length === 0) {
-    return (
-      <div className="card">
-        <div className="card-title">Work Type Distribution</div>
-        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-          No data available.
-        </div>
-      </div>
-    );
-  }
-
-  const data = Object.entries(byWorkType)
-    .sort((a, b) => b[1] - a[1])
-    .map(([type, count]) => ({
-      name: type,
-      value: count,
-      percentage: Math.round((count / total) * 100),
-    }));
-
-  const colors = ["#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ec4899"];
-
-  return (
-    <div className="card">
-      <div className="card-title">Work Type Distribution</div>
-      <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie
-            data={data}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            label={({ name, percentage }) => `${name} ${percentage}%`}
-            outerRadius={80}
-            fill="#8884d8"
-            dataKey="value"
-          >
-            {data.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={colors[index % colors.length]}
-              />
-            ))}
-          </Pie>
-          <Tooltip formatter={(value) => `${value} applications`} />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function PlatformPerformanceChart({ platformPerf }) {
-  if (!platformPerf || platformPerf.length === 0) {
-    return (
-      <div className="card">
-        <div className="card-title">Platform Performance</div>
-        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-          No platform data.
-        </div>
-      </div>
-    );
-  }
-
-  const data = platformPerf.map((p) => ({
-    name: p.name,
-    rate: parseFloat(p.rate),
-    total: p.total,
-    responses: p.responses,
-  }));
-
-  return (
-    <div className="card">
-      <div className="card-title">Platform Success Rate</div>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey="name" stroke="var(--text-muted)" />
-          <YAxis
-            stroke="var(--text-muted)"
-            label={{ value: "Rate (%)", angle: -90, position: "insideLeft" }}
-          />
-          <Tooltip
-            formatter={(value) => `${value.toFixed(1)}%`}
-            labelFormatter={(label) => `Platform: ${label}`}
-            contentStyle={{
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border)",
-            }}
-          />
-          <Bar dataKey="rate" fill="var(--green)" radius={[8, 8, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
+// ── 2. Weekly Trend — Stacked Area ────────────────────────────────────────
 function WeeklyTrendChart({ weeks }) {
-  if (!weeks || weeks.length === 0) {
-    return (
-      <div className="card">
-        <div className="card-title">Weekly Trend</div>
-        <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-          No trend data available.
-        </div>
-      </div>
-    );
-  }
-
+  if (!weeks || weeks.length === 0) return null;
   const data = weeks.map(([key, d]) => ({
-    week: new Date(key).toLocaleDateString("en-IN", {
-      month: "short",
-      day: "2-digit",
-    }),
+    week: new Date(key).toLocaleDateString("en-IN", { month: "short", day: "2-digit" }),
     applied: d.applied,
     interviews: d.interviews || 0,
     offers: d.offers || 0,
   }));
 
   return (
-    <div className="card">
-      <div className="card-title">Weekly Application Trend</div>
-      <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey="week" stroke="var(--text-muted)" />
-          <YAxis stroke="var(--text-muted)" />
-          <Tooltip
-            contentStyle={{
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border)",
-            }}
-          />
-          <Legend />
-          <Area
-            type="monotone"
-            dataKey="applied"
-            stackId="1"
-            stroke="#3b82f6"
-            fill="#3b82f6"
-          />
-          <Area
-            type="monotone"
-            dataKey="interviews"
-            stackId="1"
-            stroke="#f59e0b"
-            fill="#f59e0b"
-          />
-          <Area
-            type="monotone"
-            dataKey="offers"
-            stackId="1"
-            stroke="#10b981"
-            fill="#10b981"
-          />
+    <ChartCard title="Weekly Application Trend">
+      <ResponsiveContainer width="100%" height={240} style={{ background: "transparent", outline: "none" }}>
+        <AreaChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <defs>
+            <linearGradient id="gApplied" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
+              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="gInterview" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
+              <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="gOffer" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} />
+              <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+          <XAxis dataKey="week" tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip content={<CustomTooltip />} />
+          <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{v}</span>} />
+          <Area isAnimationActive={false} type="monotone" dataKey="applied" name="Applied" stroke="#3b82f6" strokeWidth={2} fill="url(#gApplied)" dot={false} />
+          <Area isAnimationActive={false} type="monotone" dataKey="interviews" name="Interviews" stroke="#f59e0b" strokeWidth={2} fill="url(#gInterview)" dot={false} />
+          <Area isAnimationActive={false} type="monotone" dataKey="offers" name="Offers" stroke="#22c55e" strokeWidth={2} fill="url(#gOffer)" dot={false} />
         </AreaChart>
       </ResponsiveContainer>
-    </div>
+    </ChartCard>
   );
 }
 
-function ConversionFunnelChart({ byStatus, total }) {
+// ── 3. Platform Success Rate ──────────────────────────────────────────────
+function PlatformChart({ platformPerf }) {
+  if (!platformPerf || platformPerf.length === 0) return null;
+  const data = platformPerf.map((p) => ({
+    name: p.name,
+    rate: parseFloat(p.rate),
+    total: p.total,
+  }));
+
+  return (
+    <ChartCard title="Platform Success Rate">
+      <ResponsiveContainer width="100%" height={220} style={{ background: "transparent", outline: "none" }}>
+        <BarChart data={data} layout="vertical" style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <defs>
+            <linearGradient id="gPlatform" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#6c63ff" />
+              <stop offset="100%" stopColor="#22c55e" />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+          <XAxis type="number" tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+          <YAxis type="category" dataKey="name" tick={{ fill: "#8b8b9a", fontSize: 12 }} axisLine={false} tickLine={false} width={100} />
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v.toFixed(1)}%`} />} />
+          <Bar isAnimationActive={false} dataKey="rate" name="Success Rate" fill="url(#gPlatform)" radius={[0, 6, 6, 0]} barSize={16} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── 4. Work Type Donut ────────────────────────────────────────────────────
+const WORK_COLORS = ["#6c63ff", "#3b82f6", "#f59e0b", "#22c55e", "#ec4899"];
+
+function WorkTypeChart({ byWorkType, total }) {
+  if (!byWorkType || !Object.keys(byWorkType).length) return null;
+  const data = Object.entries(byWorkType)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value], i) => ({ name, value, fill: WORK_COLORS[i % WORK_COLORS.length] }));
+
+  return (
+    <ChartCard title="Work Type Split">
+      <ResponsiveContainer width="100%" height={240} style={{ background: "transparent", outline: "none" }}>
+        <PieChart style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <Pie isAnimationActive={false}
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={55}
+            outerRadius={90}
+            paddingAngle={4}
+            dataKey="value"
+            stroke="none"
+            style={{ outline: "none", background: "transparent" }} tabIndex={-1}
+          >
+            {data.map((e, i) => <Cell key={i} fill={e.fill} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />)}
+          </Pie>
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v} (${pct(v, total)}%)`} />} />
+          <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v}</span>} />
+        </PieChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── 5. Tags Bar ───────────────────────────────────────────────────────────
+function TagsChart({ topTags, total }) {
+  if (!topTags || topTags.length === 0) return null;
+  const data = topTags.map(([tag, count]) => ({ name: tag, count, pct: Math.round((count / total) * 100) }));
+
+  return (
+    <ChartCard title="Top Application Tags">
+      <ResponsiveContainer width="100%" height={220} style={{ background: "transparent", outline: "none" }}>
+        <BarChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <defs>
+            <linearGradient id="gTag" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#6c63ff" />
+              <stop offset="100%" stopColor="#3b82f6" />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+          <XAxis dataKey="name" tick={{ fill: "#8b8b9a", fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v} applications`} />} />
+          <Bar isAnimationActive={false} dataKey="count" name="Count" fill="url(#gTag)" radius={[6, 6, 0, 0]} barSize={32} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── 6. Conversion Line ────────────────────────────────────────────────────
+function ConversionChart({ byStatus }) {
   const data = [
     { name: "Applied", value: byStatus.Applied || 0 },
     { name: "Interview", value: byStatus.Interview || 0 },
@@ -595,37 +516,163 @@ function ConversionFunnelChart({ byStatus, total }) {
   ];
 
   return (
-    <div className="card">
-      <div className="card-title">Conversion Metrics</div>
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey="name" stroke="var(--text-muted)" />
-          <YAxis stroke="var(--text-muted)" />
-          <Tooltip
-            formatter={(value) => `${value} applications`}
-            contentStyle={{
-              background: "var(--bg-secondary)",
-              border: "1px solid var(--border)",
-            }}
-          />
-          <Line
+    <ChartCard title="Conversion Funnel">
+      <ResponsiveContainer width="100%" height={220} style={{ background: "transparent", outline: "none" }}>
+        <LineChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <defs>
+            <linearGradient id="gLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#6c63ff" />
+              <stop offset="100%" stopColor="#22c55e" />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+          <XAxis dataKey="name" tick={{ fill: "#8b8b9a", fontSize: 12 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v} applications`} />} />
+          <Line isAnimationActive={false}
             type="monotone"
             dataKey="value"
-            stroke="var(--accent)"
+            name="Count"
+            stroke="#6c63ff"
             strokeWidth={3}
-            dot={{ fill: "var(--accent)", r: 6 }}
-            activeDot={{ r: 8 }}
+            dot={{ fill: "#6c63ff", r: 6, strokeWidth: 0, style: { outline: "none" } }}
+            activeDot={{ r: 8, fill: "#a5b4fc", strokeWidth: 0, style: { outline: "none" } }}
+            style={{ outline: "none", background: "transparent" }} tabIndex={-1}
           />
         </LineChart>
       </ResponsiveContainer>
-    </div>
+    </ChartCard>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── 7. NEW: Response Time Histogram ──────────────────────────────────────
+function ResponseTimeCard({ avgResponseDays, fastestResponse, slowestResponse }) {
+  if (avgResponseDays === null) return null;
+  const data = [
+    { name: "Fastest", days: fastestResponse ?? 0, fill: "#22c55e" },
+    { name: "Average", days: avgResponseDays, fill: "#6c63ff" },
+    { name: "Slowest", days: slowestResponse ?? 0, fill: "#ef4444" },
+  ];
+
+  return (
+    <ChartCard title="Response Time (Days)">
+      <ResponsiveContainer width="100%" height={180} style={{ background: "transparent", outline: "none" }}>
+        <BarChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+          <XAxis dataKey="name" tick={{ fill: "#8b8b9a", fontSize: 12 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v} day${v !== 1 ? "s" : ""}`} />} />
+          <Bar isAnimationActive={false} dataKey="days" name="Days" radius={[6, 6, 0, 0]} barSize={40} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+            {data.map((e, i) => <Cell key={i} fill={e.fill} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── 8. NEW: Platform Volume vs Response Scatter ───────────────────────────
+function PlatformScatterChart({ platformPerf }) {
+  if (!platformPerf || platformPerf.length < 2) return null;
+  const data = platformPerf.map((p) => ({
+    x: p.total,
+    y: parseFloat(p.rate),
+    z: p.responses + 1,
+    name: p.name,
+  }));
+
+  return (
+    <ChartCard title="Platform: Volume vs Success Rate">
+      <ResponsiveContainer width="100%" height={220} style={{ background: "transparent", outline: "none" }}>
+        <ScatterChart style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+          <XAxis type="number" dataKey="x" name="Applications" tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: "Apps Sent", position: "insideBottom", offset: -4, fill: "#555562", fontSize: 10 }} />
+          <YAxis type="number" dataKey="y" name="Success Rate" tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+          <ZAxis type="number" dataKey="z" range={[60, 300]} />
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const d = payload[0]?.payload;
+              return (
+                <div style={tooltipStyle}>
+                  <div style={tooltipLabelStyle}>{d?.name}</div>
+                  <div style={{ color: "#8b8b9a", marginTop: 4 }}>Apps sent: <span style={{ color: "#f0f0f2" }}>{d?.x}</span></div>
+                  <div style={{ color: "#8b8b9a" }}>Success rate: <span style={{ color: "#22c55e" }}>{d?.y}%</span></div>
+                </div>
+              );
+            }}
+          />
+          <Scatter data={data} fill="#6c63ff" style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
+        </ScatterChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── 9. NEW: Effort Radar (multi-axis overview) ────────────────────────────
+function EffortRadarChart({ stats }) {
+  const total = stats.total || 1;
+  const data = [
+    { subject: "Volume", A: Math.min(100, total * 5) },
+    { subject: "Callback", A: parseFloat(stats.callbackRate) || 0 },
+    { subject: "Offer Rate", A: parseFloat(stats.offerRate) || 0 },
+    { subject: "Platforms", A: Math.min(100, stats.platformPerf.length * 25) },
+    { subject: "Work Types", A: Math.min(100, Object.keys(stats.byWorkType).length * 33) },
+  ];
+
+  return (
+    <ChartCard title="Activity Overview (Radar)">
+      <ResponsiveContainer width="100%" height={240} style={{ background: "transparent", outline: "none" }}>
+        <RadarChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <defs>
+            <linearGradient id="gRadar" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#6c63ff" stopOpacity={0.6} />
+              <stop offset="100%" stopColor="#22c55e" stopOpacity={0.3} />
+            </linearGradient>
+          </defs>
+          <PolarGrid stroke="rgba(255,255,255,0.08)" />
+          <PolarAngleAxis dataKey="subject" tick={{ fill: "#8b8b9a", fontSize: 11 }} />
+          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+          <Radar name="Score" dataKey="A" stroke="#6c63ff" fill="url(#gRadar)" fillOpacity={0.7} dot={{ fill: "#6c63ff", r: 4, strokeWidth: 0, style: { outline: "none" } }} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v.toFixed(0)} pts`} />} />
+        </RadarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── 10. NEW: Daily Velocity mini-bar ──────────────────────────────────────
+function DailyVelocityChart({ weeks }) {
+  if (!weeks || weeks.length < 2) return null;
+  // Show all weeks as a simple volume bar
+  const data = weeks.map(([key, d]) => ({
+    week: new Date(key).toLocaleDateString("en-IN", { month: "short", day: "2-digit" }),
+    total: d.applied + (d.interviews || 0) + (d.offers || 0),
+  }));
+
+  return (
+    <ChartCard title="Weekly Activity Volume">
+      <ResponsiveContainer width="100%" height={140} style={{ background: "transparent", outline: "none" }}>
+        <BarChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+          <defs>
+            <linearGradient id="gVelocity" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#6c63ff" stopOpacity={0.9} />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.5} />
+            </linearGradient>
+          </defs>
+          <XAxis dataKey="week" tick={{ fill: "#555562", fontSize: 10 }} axisLine={false} tickLine={false} />
+          <YAxis tick={false} axisLine={false} tickLine={false} width={0} />
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v} activities`} />} />
+          <Bar isAnimationActive={false} dataKey="total" name="Total Activity" fill="url(#gVelocity)" radius={[4, 4, 0, 0]} barSize={24} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── Main Analytics ────────────────────────────────────────────────────────
 export default function Analytics({ applications }) {
-  const [timeFilter, setTimeFilter] = useState("7d");
+  const [timeFilter, setTimeFilter] = useState("all");
 
   const filtered = useMemo(() => {
     if (timeFilter === "all") return applications;
@@ -644,42 +691,32 @@ export default function Analytics({ applications }) {
     const byWorkType = {};
     const weeklyData = {};
     const tagCounts = {};
-
-    let totalResponseDays = 0,
-      responseCount = 0;
-    let fastestResponse = Infinity,
-      slowestResponse = 0;
+    let totalResponseDays = 0, responseCount = 0;
+    let fastestResponse = Infinity, slowestResponse = 0;
 
     filtered.forEach((app) => {
       byStatus[app.status] = (byStatus[app.status] || 0) + 1;
 
       if (app.platform) {
-        if (!byPlatform[app.platform])
-          byPlatform[app.platform] = { total: 0, interviews: 0, offers: 0 };
+        if (!byPlatform[app.platform]) byPlatform[app.platform] = { total: 0, interviews: 0, offers: 0 };
         byPlatform[app.platform].total++;
         if (app.status === "Interview") byPlatform[app.platform].interviews++;
         if (app.status === "Offer") byPlatform[app.platform].offers++;
       }
 
-      if (app.workType)
-        byWorkType[app.workType] = (byWorkType[app.workType] || 0) + 1;
+      if (app.workType) byWorkType[app.workType] = (byWorkType[app.workType] || 0) + 1;
 
       if (app.dateApplied) {
         const week = getWeekKey(app.dateApplied);
-        if (!weeklyData[week])
-          weeklyData[week] = { applied: 0, interviews: 0, offers: 0 };
+        if (!weeklyData[week]) weeklyData[week] = { applied: 0, interviews: 0, offers: 0 };
         weeklyData[week].applied++;
         if (app.status === "Interview") weeklyData[week].interviews++;
         if (app.status === "Offer") weeklyData[week].offers++;
       }
 
-      if (app.tags && Array.isArray(app.tags)) {
-        app.tags.forEach((t) => {
-          tagCounts[t] = (tagCounts[t] || 0) + 1;
-        });
-      }
-      if (app.workType)
-        tagCounts[app.workType] = (tagCounts[app.workType] || 0) + 1;
+      if (app.tags && Array.isArray(app.tags))
+        app.tags.forEach((t) => { tagCounts[t] = (tagCounts[t] || 0) + 1; });
+      if (app.workType) tagCounts[app.workType] = (tagCounts[app.workType] || 0) + 1;
 
       if (app.statusHistory && app.statusHistory.length > 1) {
         const first = new Date(app.statusHistory[0].date);
@@ -694,17 +731,14 @@ export default function Analytics({ applications }) {
       }
     });
 
-    const avgResponseDays =
-      responseCount > 0 ? Math.round(totalResponseDays / responseCount) : null;
+    const avgResponseDays = responseCount > 0 ? Math.round(totalResponseDays / responseCount) : null;
     const callbackRate = pct(byStatus.Interview + byStatus.Offer, total);
     const offerRate = pct(byStatus.Offer, total);
     const rejectionRate = pct(byStatus.Rejected, total);
 
     const platformPerf = Object.entries(byPlatform)
       .map(([name, d]) => ({
-        name,
-        total: d.total,
-        responses: d.interviews + d.offers,
+        name, total: d.total, responses: d.interviews + d.offers,
         rate: d.total > 0 ? pct(d.interviews + d.offers, d.total) : "0.0",
       }))
       .sort((a, b) => parseFloat(b.rate) - parseFloat(a.rate));
@@ -715,22 +749,14 @@ export default function Analytics({ applications }) {
 
     const topTags = Object.entries(tagCounts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
+      .slice(0, 6);
 
     return {
-      total,
-      byStatus,
-      byPlatform,
-      byWorkType,
-      platformPerf,
-      weeks,
-      callbackRate,
-      offerRate,
-      rejectionRate,
+      total, byStatus, byPlatform, byWorkType, platformPerf, weeks,
+      callbackRate, offerRate, rejectionRate,
       avgResponseDays,
       fastestResponse: fastestResponse === Infinity ? null : fastestResponse,
-      slowestResponse:
-        slowestResponse === 0 && responseCount === 0 ? null : slowestResponse,
+      slowestResponse: slowestResponse === 0 && responseCount === 0 ? null : slowestResponse,
       topTags,
       isLowData: total < MIN_DATA_THRESHOLD,
     };
@@ -739,12 +765,7 @@ export default function Analytics({ applications }) {
   if (!stats) {
     return (
       <div className="empty-state">
-        <div
-          className="empty-state-icon"
-          style={{ fontSize: 32, marginBottom: 10, opacity: 0.4 }}
-        >
-          —
-        </div>
+        <div className="empty-state-icon" style={{ fontSize: 32, marginBottom: 10, opacity: 0.4 }}>—</div>
         <h3>No data to analyze</h3>
         <p>Add applications to see analytics</p>
       </div>
@@ -753,8 +774,10 @@ export default function Analytics({ applications }) {
 
   return (
     <div>
+      {/* Recharts global focus/bg reset */}
+      <style dangerouslySetInnerHTML={{ __html: RECHARTS_RESET }} />
       {/* Time filter */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, alignItems: "center" }}>
         {[
           { value: "7d", label: "Last 7 days" },
           { value: "30d", label: "Last 30 days" },
@@ -766,103 +789,72 @@ export default function Analytics({ applications }) {
             style={{
               padding: "6px 14px",
               borderRadius: "var(--radius-sm)",
-              border: `1px solid ${timeFilter === opt.value ? "var(--accent-border)" : "var(--border)"}`,
-              background:
-                timeFilter === opt.value ? "var(--accent-dim)" : "transparent",
-              color:
-                timeFilter === opt.value
-                  ? "var(--accent)"
-                  : "var(--text-muted)",
-              fontSize: 12,
-              fontWeight: 500,
-              cursor: "pointer",
+              border: `1px solid ${timeFilter === opt.value ? "rgba(108,99,255,0.4)" : "var(--border)"}`,
+              background: timeFilter === opt.value ? "rgba(108,99,255,0.12)" : "transparent",
+              color: timeFilter === opt.value ? "#6c63ff" : "var(--text-muted)",
+              fontSize: 12, fontWeight: 500, cursor: "pointer",
               fontFamily: "'DM Sans', sans-serif",
               transition: "all 0.15s",
+              outline: "none",
             }}
           >
             {opt.label}
           </button>
         ))}
         {stats.isLowData && (
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: 11,
-              color: "var(--text-muted)",
-              alignSelf: "center",
-              fontStyle: "italic",
-            }}
-          >
-            Based on {stats.total} application{stats.total !== 1 ? "s" : ""} —
-            metrics may not be representative
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+            {stats.total} application{stats.total !== 1 ? "s" : ""} — metrics may not be representative
           </span>
         )}
       </div>
 
       {/* Insights */}
-      <InsightsBox stats={stats} applications={filtered} />
+      <InsightsBox stats={stats} />
 
-      {/* Key metrics */}
+      {/* KPI cards */}
       <div className="stats-grid" style={{ marginBottom: 20 }}>
-        <MetricCard
-          label="Callback Rate"
-          value={stats.callbackRate !== null ? `${stats.callbackRate}%` : "—"}
-          sub="Interview + Offer"
-          color="var(--accent)"
-          lowData={stats.isLowData ? stats.total : null}
-        />
-        <MetricCard
-          label="Offer Rate"
-          value={stats.offerRate !== null ? `${stats.offerRate}%` : "—"}
-          sub="Of all applications"
-          color="var(--green)"
-          lowData={stats.isLowData ? stats.total : null}
-        />
-        <MetricCard
-          label="Rejection Rate"
-          value={stats.rejectionRate !== null ? `${stats.rejectionRate}%` : "—"}
-          sub="Of all applications"
-          color="var(--red)"
-          lowData={stats.isLowData ? stats.total : null}
-        />
-        <MetricCard
-          label="Total Applications"
-          value={stats.total}
-          sub="In selected period"
-          color="var(--yellow)"
-        />
+        <MetricCard label="Callback Rate" value={stats.callbackRate !== null ? `${stats.callbackRate}%` : "—"} sub="Interview + Offer" color="#6c63ff" lowData={stats.isLowData ? stats.total : null} />
+        <MetricCard label="Offer Rate" value={stats.offerRate !== null ? `${stats.offerRate}%` : "—"} sub="Of all applications" color="#22c55e" lowData={stats.isLowData ? stats.total : null} />
+        <MetricCard label="Rejection Rate" value={stats.rejectionRate !== null ? `${stats.rejectionRate}%` : "—"} sub="Of all applications" color="#ef4444" lowData={stats.isLowData ? stats.total : null} />
+        <MetricCard label="Total Applications" value={stats.total} sub="In selected period" color="#f59e0b" />
       </div>
 
       {/* Funnel */}
       <Funnel byStatus={stats.byStatus} total={stats.total} />
 
-      {/* Status Distribution Pie Chart */}
-      <StatusDistributionChart byStatus={stats.byStatus} total={stats.total} />
-
-      {/* Grid of charts */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-          marginBottom: 16,
-        }}
-      >
-        <WorkTypeVisualization
-          byWorkType={stats.byWorkType}
-          total={stats.total}
-        />
-        <PlatformPerformanceChart platformPerf={stats.platformPerf} />
+      {/* Row 1: Status Donut + Work Type Donut */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
+        <StatusDonutChart byStatus={stats.byStatus} />
+        <WorkTypeChart byWorkType={stats.byWorkType} total={stats.total} />
       </div>
 
-      {/* Tags Chart */}
-      <TagsVisualization topTags={stats.topTags} total={stats.total} />
+      {/* Radar */}
+      <EffortRadarChart stats={stats} />
 
       {/* Weekly Trend */}
       <WeeklyTrendChart weeks={stats.weeks} />
 
-      {/* Conversion Funnel */}
-      <ConversionFunnelChart byStatus={stats.byStatus} total={stats.total} />
+      {/* Daily velocity */}
+      <DailyVelocityChart weeks={stats.weeks} />
+
+      {/* Row 2: Platform Bar + Scatter */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
+        <PlatformChart platformPerf={stats.platformPerf} />
+        <PlatformScatterChart platformPerf={stats.platformPerf} />
+      </div>
+
+      {/* Tags */}
+      <TagsChart topTags={stats.topTags} total={stats.total} />
+
+      {/* Conversion Line */}
+      <ConversionChart byStatus={stats.byStatus} />
+
+      {/* Response Time */}
+      <ResponseTimeCard
+        avgResponseDays={stats.avgResponseDays}
+        fastestResponse={stats.fastestResponse}
+        slowestResponse={stats.slowestResponse}
+      />
     </div>
   );
 }

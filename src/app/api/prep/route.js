@@ -6,7 +6,6 @@ import { DEFAULT_APTITUDE_TOPICS } from "../../../lib/defaultAptitudeTopics";
 import { distributeTopics, daysUntil } from "../../../lib/scheduleTopics";
 
 // ─── GET /api/prep ────────────────────────────────────────────────────────────
-// Returns all prep trackers for the user, with topics and daily logs included.
 export async function GET() {
   const { userId } = await auth();
   if (!userId)
@@ -19,9 +18,7 @@ export async function GET() {
       application: { select: { id: true, company: true, role: true } },
       topics: {
         orderBy: [{ daySlot: "asc" }, { order: "asc" }],
-        include: {
-          dailyLogs: true,
-        },
+        include: { dailyLogs: true },
       },
     },
   });
@@ -30,18 +27,6 @@ export async function GET() {
 }
 
 // ─── POST /api/prep ───────────────────────────────────────────────────────────
-// Creates a new PrepTracker.
-// Body:
-//  {
-//    companyName: string,
-//    applicationId?: string,       // optional link to Application
-//    roundName?: string,           // default "Aptitude"
-//    roundDate?: ISO string | null,
-//    daysManual?: number | null,   // override: use X days instead of roundDate
-//    useDefaultTopics?: boolean,   // seed with DEFAULT_APTITUDE_TOPICS
-//    customTopics?: { name, category }[],  // additional / custom topics
-//    notes?: string,
-//  }
 export async function POST(req) {
   const { userId } = await auth();
   if (!userId)
@@ -58,6 +43,8 @@ export async function POST(req) {
     useDefaultTopics = true,
     customTopics = [],
     notes,
+    notifyEmail,          // ← new
+    selectedCategories,   // ← from modal
   } = body;
 
   if (!companyName) {
@@ -75,22 +62,27 @@ export async function POST(req) {
     totalDays = daysUntil(roundDate);
   }
 
-  // Build full topic list
-  const defaultList = useDefaultTopics ? DEFAULT_APTITUDE_TOPICS : [];
+  // Build full topic list — filter by selectedCategories if provided
+  const defaultPool = useDefaultTopics ? DEFAULT_APTITUDE_TOPICS : [];
+  const filteredDefaults = selectedCategories?.length
+    ? defaultPool.filter((t) => selectedCategories.includes(t.category))
+    : defaultPool;
+
   const customList = customTopics.map((t) => ({
     name: t.name,
     category: t.category ?? "Custom",
     isCustom: true,
   }));
+
   const allTopics = [
-    ...defaultList.map((t) => ({ ...t, isCustom: false })),
+    ...filteredDefaults.map((t) => ({ ...t, isCustom: false })),
     ...customList,
   ];
 
   // Distribute topics across days
   const scheduled = distributeTopics(allTopics, totalDays);
 
-  // Create tracker + topics in one transaction
+  // Create tracker + topics
   const tracker = await prisma.prepTracker.create({
     data: {
       clerkUserId: userId,
@@ -99,6 +91,7 @@ export async function POST(req) {
       roundName,
       roundDate: roundDate ? new Date(roundDate) : null,
       notes: notes ?? null,
+      notifyEmail: notifyEmail ?? null,   // ← save it
       totalTopics: scheduled.length,
       doneTopics: 0,
       topics: {

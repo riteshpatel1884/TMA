@@ -30,7 +30,6 @@ model Application {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  // Relation to prep trackers
   prepTrackers     PrepTracker[]
 
   @@index([clerkUserId])
@@ -38,23 +37,20 @@ model Application {
   @@map("applications")
 }
 
-// One prep tracker per round per company (e.g. TCS NQT Aptitude, Infosys Reasoning)
 model PrepTracker {
   id            String    @id @default(cuid())
   clerkUserId   String    @map("clerk_user_id")
 
-  // Optional link to an application
-  applicationId String?   @map("application_id")
+  applicationId String?      @map("application_id")
   application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
 
-  // Company name — stored separately so tracker can exist without an application
   companyName   String    @map("company_name")
+  roundName     String    @default("Aptitude") @map("round_name")
+  roundDate     DateTime? @map("round_date") @db.Date
 
-  // Round details
-  roundName     String    @default("Aptitude") @map("round_name") // e.g. "Aptitude", "Coding", "GD"
-  roundDate     DateTime? @map("round_date") @db.Date            // the exam date
+  // Email for day-complete & reminder notifications
+  notifyEmail   String?   @map("notify_email")
 
-  // Progress snapshot (denormalised for quick reads)
   totalTopics   Int       @default(0) @map("total_topics")
   doneTopics    Int       @default(0) @map("done_topics")
 
@@ -69,42 +65,36 @@ model PrepTracker {
   @@map("prep_trackers")
 }
 
-// Every topic inside a prep tracker (e.g. "Number System", "Permutations")
 model PrepTopic {
-  id            String      @id @default(cuid())
-  trackerId     String      @map("tracker_id")
-  tracker       PrepTracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  id        String      @id @default(cuid())
+  trackerId String      @map("tracker_id")
+  tracker   PrepTracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
 
-  name          String                        // topic name
-  category      String?                       // e.g. "Quantitative", "Verbal", "Logical"
-  isCustom      Boolean     @default(false)   @map("is_custom")  // false = from default list
-  order         Int         @default(0)       // display order
+  name      String
+  category  String?
+  isCustom  Boolean  @default(false) @map("is_custom")
+  order     Int      @default(0)
+  daySlot   Int?     @map("day_slot")
 
-  // Which day slot this topic is assigned to (1-based, null = unscheduled)
-  daySlot       Int?        @map("day_slot")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  createdAt     DateTime    @default(now()) @map("created_at")
-
-  dailyLogs     DailyTopicLog[]
+  dailyLogs DailyTopicLog[]
 
   @@index([trackerId])
   @@map("prep_topics")
 }
 
-// Each time a user marks/unmarks a topic as done for a specific date
 model DailyTopicLog {
-  id          String     @id @default(cuid())
-  topicId     String     @map("topic_id")
-  topic       PrepTopic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  id        String    @id @default(cuid())
+  topicId   String    @map("topic_id")
+  topic     PrepTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
-  // The calendar date this completion belongs to
-  logDate     DateTime   @map("log_date") @db.Date
-  completed   Boolean    @default(true)
+  logDate   DateTime @map("log_date") @db.Date
+  completed Boolean  @default(true)
 
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  // One log per topic per day
   @@unique([topicId, logDate])
   @@index([topicId])
   @@map("daily_topic_logs")

@@ -1,7 +1,7 @@
 "use client";
 // components/prep/AddTopicsModal.jsx
 import { useState } from "react";
-import { DEFAULT_APTITUDE_TOPICS } from "../../lib/defaultAptitudeTopics";
+import { DEFAULT_APTITUDE_TOPICS } from "../../../lib/defaultAptitudeTopics";
 
 const CATEGORIES = ["Quantitative", "Logical", "Verbal", "Custom"];
 

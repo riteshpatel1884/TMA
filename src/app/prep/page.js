@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
-import PrepList from "../Components/PrepList";
-import PrepDetail from "../Components/PrepDetail";
-import CreateTrackerModal from "../Components/CreateTrackerModal";
+import PrepList from "../Components/prep/PrepList";
+import PrepDetail from "../Components/prep/PrepDetail";
+import CreateTrackerModal from "../Components/prep/CreateTrackerModal";
 
 export default function PrepPage() {
   const [trackers, setTrackers] = useState([]);
@@ -159,3 +159,4 @@ export default function PrepPage() {
     </div>
   );
 }
+
