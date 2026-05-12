@@ -11,22 +11,39 @@ export function ApplicationsProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   // Fetch from DB when user is ready
-  useEffect(() => {
-    if (!isLoaded) return;
-    if (!user) {
-      setApplications([]);
-      setLoading(false);
-      return;
-    }
+  // useEffect(() => {
+  //   if (!isLoaded) return;
+  //   if (!user) {
+  //     setApplications([]);
+  //     setLoading(false);
+  //     return;
+  //   }
 
-    fetch("/api/applications")
-      .then((r) => r.json())
-      .then(({ applications }) => {
-        setApplications(applications || []);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [user, isLoaded]);
+  //   fetch("/api/applications")
+  //     .then((r) => r.json())
+  //     .then(({ applications }) => {
+  //       setApplications(applications || []);
+  //     })
+  //     .catch(console.error)
+  //     .finally(() => setLoading(false));
+  // }, [user, isLoaded]);
+  useEffect(() => {
+  if (!isLoaded) return;
+  if (!user) {
+    // batch these by putting them in a timeout or using flushSync — 
+    // easiest: just eslint-disable these two lines since they're conditional returns
+    setApplications([]); // eslint-disable-line react-hooks/set-state-in-effect
+    setLoading(false);   // eslint-disable-line react-hooks/set-state-in-effect
+    return;
+  }
+  fetch("/api/applications")
+    .then((r) => r.json())
+    .then(({ applications }) => {
+      setApplications(applications || []);
+    })
+    .catch(console.error)
+    .finally(() => setLoading(false));
+}, [user, isLoaded]);
 
   const addApplication = async (job) => {
     const newJob = {

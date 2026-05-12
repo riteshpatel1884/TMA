@@ -606,10 +606,16 @@ export default function ResumeMatcher() {
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
 
+  // useEffect(() => {
+  //   setRemaining(getRemainingUses());
+  //   setHistory(getHistory());
+  // }, []);
   useEffect(() => {
-    setRemaining(getRemainingUses());
-    setHistory(getHistory());
-  }, []);
+  const remaining = getRemainingUses();
+  const history = getHistory();
+  setRemaining(remaining);
+  setHistory(history);
+}, []);
 
   const isLimitReached = remaining <= 0;
   const expYears = experience === "" ? null : parseInt(experience);

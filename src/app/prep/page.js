@@ -36,10 +36,37 @@ export default function PrepPage() {
     }
   };
 
+  // useEffect(() => {
+  //   fetchTrackers();
+  //   fetchApplications();
+  // }, []);
   useEffect(() => {
-    fetchTrackers();
-    fetchApplications();
-  }, []);
+  const fetchTrackers = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/prep");
+      const data = await res.json();
+      setTrackers(data.trackers ?? []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchApplications = async () => {
+    try {
+      const res = await fetch("/api/applications");
+      const data = await res.json();
+      setApplications(data.applications ?? []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  fetchTrackers();
+  fetchApplications();
+}, []);
 
   const activeTracker = trackers.find((t) => t.id === activeTrackerId) ?? null;
 

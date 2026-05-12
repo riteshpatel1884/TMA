@@ -68,13 +68,13 @@ export default function AddJobModal({ onClose, onSave, initialData }) {
     initialData ? buildFormFromData(initialData) : { ...DEFAULT_FORM }
   );
 
-  useEffect(() => {
-    if (initialData) {
-      setForm(buildFormFromData(initialData));
-    } else {
-      setForm({ ...DEFAULT_FORM });
-    }
-  }, [initialData]);
+  // useEffect(() => {
+  //   if (initialData) {
+  //     setForm(buildFormFromData(initialData));
+  //   } else {
+  //     setForm({ ...DEFAULT_FORM });
+  //   }
+  // }, [initialData]);
 
   const set = useCallback((key, val) => setForm((f) => ({ ...f, [key]: val })), []);
 
