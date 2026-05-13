@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useApplications } from "../../context/ApplicationsContext";
 import ApplicationsTable from "../../Components/ApplicationsTab";
 import AddJobModal from "../../Components/AddJobModal";
+import ApplicationsSkeleton from "./Applicationsskeleton";
 
 export default function ApplicationsPage() {
-  const { applications, addApplication, updateApplication, deleteApplication } =
+  const { applications, addApplication, updateApplication, deleteApplication, loading } =
     useApplications();
   const [showModal, setShowModal] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
@@ -32,15 +33,19 @@ export default function ApplicationsPage() {
         </button>
       </div>
 
-      <ApplicationsTable
-        applications={applications}
-        onUpdate={updateApplication}
-        onDelete={deleteApplication}
-        onEdit={(job) => {
-          setEditingJob(job);
-          setShowModal(true);
-        }}
-      />
+      {loading ? (
+        <ApplicationsSkeleton />
+      ) : (
+        <ApplicationsTable
+          applications={applications}
+          onUpdate={updateApplication}
+          onDelete={deleteApplication}
+          onEdit={(job) => {
+            setEditingJob(job);
+            setShowModal(true);
+          }}
+        />
+      )}
 
       {showModal && (
         <AddJobModal

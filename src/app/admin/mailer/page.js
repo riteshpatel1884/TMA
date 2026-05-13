@@ -1,36 +1,195 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 const ADMIN_SECRET = process.env.NEXT_PUBLIC_ADMIN_SECRET || "";
+const SESSION_KEY  = "ll_admin_auth";
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS   = 15 * 60 * 1000; // 15 min
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════
+   PASSWORD GATE
+═══════════════════════════════════════════════════════════════ */
+function PasswordGate({ onUnlock }) {
+  const [pwd, setPwd]           = useState("");
+  const [error, setError]       = useState("");
+  const [attempts, setAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(null);
+  const [showPwd, setShowPwd]   = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  // restore lockout from sessionStorage
+  useEffect(() => {
+    const saved = sessionStorage.getItem("ll_lockout");
+    if (saved) {
+      const until = parseInt(saved, 10);
+      if (Date.now() < until) setLockedUntil(until);
+      else sessionStorage.removeItem("ll_lockout");
+    }
+    const savedAttempts = parseInt(sessionStorage.getItem("ll_attempts") || "0", 10);
+    setAttempts(savedAttempts);
+  }, []);
+
+  const isLocked = lockedUntil && Date.now() < lockedUntil;
+  const remaining = isLocked ? Math.ceil((lockedUntil - Date.now()) / 60000) : 0;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isLocked) return;
+    if (!pwd.trim()) { setError("Enter the admin password."); return; }
+
+    setChecking(true);
+    // small artificial delay to prevent brute-force timing
+    await new Promise(r => setTimeout(r, 400));
+
+    if (pwd === ADMIN_SECRET) {
+      sessionStorage.setItem(SESSION_KEY, "1");
+      sessionStorage.removeItem("ll_attempts");
+      sessionStorage.removeItem("ll_lockout");
+      onUnlock();
+    } else {
+      const next = attempts + 1;
+      setAttempts(next);
+      sessionStorage.setItem("ll_attempts", String(next));
+
+      if (next >= MAX_ATTEMPTS) {
+        const until = Date.now() + LOCKOUT_MS;
+        setLockedUntil(until);
+        sessionStorage.setItem("ll_lockout", String(until));
+        setError(`Too many attempts. Locked for 15 minutes.`);
+      } else {
+        setError(`Incorrect password. ${MAX_ATTEMPTS - next} attempt${MAX_ATTEMPTS - next !== 1 ? "s" : ""} remaining.`);
+      }
+      setPwd("");
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div style={G.page}>
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        *{box-sizing:border-box}
+        input:focus{outline:2px solid #1a73e8!important;border-color:#1a73e8!important}
+      `}</style>
+
+      <div style={G.card}>
+        {/* Logo */}
+        <div style={G.logoRow}>
+          <span style={{ fontSize:32 }}>✉️</span>
+        </div>
+        <div style={G.logoText}>
+          <span style={{ color:"#4285f4" }}>M</span>
+          <span style={{ color:"#ea4335" }}>a</span>
+          <span style={{ color:"#fbbc05" }}>i</span>
+          <span style={{ color:"#4285f4" }}>l</span>
+          <span style={{ color:"#34a853", marginLeft:6 }}>Center</span>
+        </div>
+        <p style={G.subtitle}>LeaderLab Admin — Sign in</p>
+
+        {isLocked ? (
+          <div style={G.lockBox}>
+            <span style={{ fontSize:32 }}>🔒</span>
+            <p style={{ margin:"8px 0 4px", fontWeight:600, color:"#d93025" }}>Access Locked</p>
+            <p style={{ margin:0, fontSize:13, color:"#5f6368" }}>Too many failed attempts.<br/>Try again in <b>{remaining} minute{remaining !== 1 ? "s" : ""}</b>.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} style={G.form}>
+            <div style={G.inputWrap}>
+              <input
+                type={showPwd ? "text" : "password"}
+                value={pwd}
+                onChange={e => { setPwd(e.target.value); setError(""); }}
+                placeholder="Admin password"
+                autoFocus
+                style={G.input}
+                disabled={checking}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd(s => !s)}
+                style={G.eyeBtn}
+                tabIndex={-1}
+              >
+                {showPwd ? "🙈" : "👁"}
+              </button>
+            </div>
+
+            {error && (
+              <div style={G.errorBox}>
+                <span style={{ fontSize:14 }}>⚠</span> {error}
+              </div>
+            )}
+
+            {attempts > 0 && !error && (
+              <p style={G.attemptsNote}>{MAX_ATTEMPTS - attempts} attempt{MAX_ATTEMPTS - attempts !== 1 ? "s" : ""} remaining</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={checking || !pwd.trim()}
+              style={{ ...G.submitBtn, opacity: (checking || !pwd.trim()) ? 0.6 : 1 }}
+            >
+              {checking ? (
+                <span style={{ display:"flex", alignItems:"center", gap:8, justifyContent:"center" }}>
+                  <span style={{ width:16,height:16,border:"2px solid rgba(255,255,255,0.4)",borderTop:"2px solid #fff",borderRadius:"50%",animation:"spin 0.7s linear infinite" }} />
+                  Verifying…
+                </span>
+              ) : "Sign in"}
+            </button>
+          </form>
+        )}
+
+        <p style={G.footer}>
+          This page is restricted to LeaderLab admins only.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const G = {
+  page: { minHeight:"100vh", background:"#f6f8fc", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Google Sans',Arial,sans-serif", padding:16 },
+  card: { background:"#fff", borderRadius:8, border:"1px solid #dadce0", padding:"48px 40px 36px", width:"100%", maxWidth:400, textAlign:"center", animation:"fadeUp 0.3s ease" },
+  logoRow: { marginBottom:12 },
+  logoText: { fontSize:24, fontWeight:400, letterSpacing:-0.5, marginBottom:8 },
+  subtitle: { fontSize:16, color:"#202124", margin:"0 0 28px", fontWeight:400 },
+  form: { display:"flex", flexDirection:"column", gap:12, textAlign:"left" },
+  inputWrap: { position:"relative" },
+  input: { width:"100%", border:"1px solid #dadce0", borderRadius:4, padding:"13px 44px 13px 14px", fontSize:16, color:"#202124", fontFamily:"inherit", background:"#fff", transition:"border-color 0.2s" },
+  eyeBtn: { position:"absolute", right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:16, padding:4, color:"#5f6368" },
+  errorBox: { background:"#fce8e6", color:"#d93025", borderRadius:4, padding:"10px 14px", fontSize:13, display:"flex", alignItems:"center", gap:8 },
+  attemptsNote: { fontSize:12, color:"#ea8600", margin:0 },
+  submitBtn: { background:"#1a73e8", color:"#fff", border:"none", borderRadius:4, padding:"12px", fontSize:16, fontWeight:500, cursor:"pointer", fontFamily:"inherit", transition:"background 0.2s" },
+  lockBox: { background:"#fce8e6", borderRadius:8, padding:"24px 20px", textAlign:"center", color:"#202124" },
+  footer: { fontSize:12, color:"#80868b", marginTop:24, marginBottom:0 },
+};
+
+
+/* ═══════════════════════════════════════════════════════════════
+   HELPERS
+═══════════════════════════════════════════════════════════════ */
 function ago(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime();
   const d = Math.floor(diff / 86400000);
   if (d === 0) return "Today";
   if (d === 1) return "Yesterday";
-  if (d < 30) return `${d}d ago`;
+  if (d < 30)  return `${d}d ago`;
   return `${Math.floor(d / 30)}mo ago`;
 }
-
 function progressColor(pct) {
   if (pct >= 75) return "#16a34a";
   if (pct >= 40) return "#d97706";
   return "#6366f1";
 }
-
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
-
-function avatar(email) {
-  return email?.[0]?.toUpperCase() || "?";
-}
-
+function avatar(email) { return email?.[0]?.toUpperCase() || "?"; }
 const AVATAR_COLORS = [
-  ["#dbeafe","#1d4ed8"], ["#dcfce7","#15803d"], ["#fce7f3","#be185d"],
-  ["#fef3c7","#b45309"], ["#ede9fe","#7c3aed"], ["#ffedd5","#c2410c"],
+  ["#dbeafe","#1d4ed8"],["#dcfce7","#15803d"],["#fce7f3","#be185d"],
+  ["#fef3c7","#b45309"],["#ede9fe","#7c3aed"],["#ffedd5","#c2410c"],
 ];
 function avatarColor(email) {
   let h = 0;
@@ -38,42 +197,46 @@ function avatarColor(email) {
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 }
 
-// ── main ──────────────────────────────────────────────────────────────────────
-export default function AdminMailer() {
-  const [users, setUsers]             = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [fetchError, setFetchError]   = useState("");
 
-  // sidebar tab
-  const [sideTab, setSideTab]         = useState("compose");
-  const [sentLog, setSentLog]         = useState([]);
-  const [viewSent, setViewSent]       = useState(null);
+/* ═══════════════════════════════════════════════════════════════
+   MAIN ADMIN MAILER
+═══════════════════════════════════════════════════════════════ */
+function AdminMailerApp() {
+  const [users, setUsers]           = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [fetchError, setFetchError] = useState("");
 
-  // filters
-  const [search, setSearch]           = useState("");
+  const [sideTab, setSideTab]       = useState("compose");
+  const [sentLog, setSentLog]       = useState([]);
+  const [viewSent, setViewSent]     = useState(null);
+
+  const [search, setSearch]         = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
-  const [minTrackers, setMinTrackers] = useState(0);
-  const [minProgress, setMinProgress] = useState(0);
-  const [filterOpen, setFilterOpen]   = useState(false);
+  const [minTrackers, setMinTrackers]     = useState(0);
+  const [minProgress, setMinProgress]     = useState(0);
+  const [filterOpen, setFilterOpen] = useState(false);
 
-  // recipients
-  const [selected, setSelected]       = useState(new Set());
-  const [customEmails, setCustomEmails] = useState([]);
-  const [customInput, setCustomInput] = useState("");
-  const [customError, setCustomError] = useState("");
+  const [selected, setSelected]     = useState(new Set());
+  const [customEmails, setCustomEmails]   = useState([]);
+  const [customInput, setCustomInput]     = useState("");
+  const [customError, setCustomError]     = useState("");
 
-  // compose
-  const [fromName, setFromName]       = useState("LeaderLab");
-  const [subject, setSubject]         = useState("");
-  const [body, setBody]               = useState("");
-  const [preview, setPreview]         = useState(false);
+  const [fromName, setFromName]     = useState("LeaderLab");
+  const [subject, setSubject]       = useState("");
+  const [body, setBody]             = useState("");
+  const [preview, setPreview]       = useState(false);
 
-  // send
-  const [sending, setSending]         = useState(false);
-  const [result, setResult]           = useState(null);
-  const [showResult, setShowResult]   = useState(false);
+  const [sending, setSending]       = useState(false);
+  const [result, setResult]         = useState(null);
+  const [showResult, setShowResult] = useState(false);
 
-  // ── fetch users ──────────────────────────────────────────────────────────
+  const handleLogout = () => {
+    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem("ll_attempts");
+    sessionStorage.removeItem("ll_lockout");
+    window.location.reload();
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -91,7 +254,6 @@ export default function AdminMailer() {
     })();
   }, []);
 
-  // ── derived ───────────────────────────────────────────────────────────────
   const allCompanies = useMemo(() => {
     const s = new Set();
     users.forEach(u => u.companies?.forEach(c => s.add(c)));
@@ -103,7 +265,7 @@ export default function AdminMailer() {
     return users.filter(u => {
       if (q && !u.email.toLowerCase().includes(q)) return false;
       if (u.trackerCount < minTrackers) return false;
-      if (u.progressPct < minProgress) return false;
+      if (u.progressPct  < minProgress) return false;
       if (companyFilter && !u.companies?.includes(companyFilter)) return false;
       return true;
     });
@@ -114,18 +276,12 @@ export default function AdminMailer() {
     [selected, customEmails]
   );
 
-  // ── selection ─────────────────────────────────────────────────────────────
   const toggleUser = (email) =>
-    setSelected(prev => {
-      const n = new Set(prev);
-      n.has(email) ? n.delete(email) : n.add(email);
-      return n;
-    });
+    setSelected(prev => { const n = new Set(prev); n.has(email) ? n.delete(email) : n.add(email); return n; });
 
   const selectAll = () => setSelected(new Set(filtered.map(u => u.email)));
   const clearAll  = () => { setSelected(new Set()); setCustomEmails([]); };
 
-  // ── custom email ──────────────────────────────────────────────────────────
   const addCustomEmail = () => {
     const parts = customInput.trim().split(/[\s,;]+/).filter(Boolean);
     const invalid = parts.filter(p => !isValidEmail(p));
@@ -142,12 +298,9 @@ export default function AdminMailer() {
     else setCustomEmails(prev => prev.filter(e => e !== email));
   };
 
-  // ── send ──────────────────────────────────────────────────────────────────
   const handleSend = async () => {
     if (!allRecipients.length || !subject.trim() || !body.trim()) return;
-    setSending(true);
-    setResult(null);
-    setShowResult(false);
+    setSending(true); setResult(null); setShowResult(false);
     try {
       const res = await fetch("/api/admin/send", {
         method: "POST",
@@ -155,32 +308,24 @@ export default function AdminMailer() {
         body: JSON.stringify({ emails: allRecipients, subject, body, fromName }),
       });
       const data = await res.json();
-      setResult(data);
-      setShowResult(true);
+      setResult(data); setShowResult(true);
       if (data.ok) {
         setSentLog(prev => [{
-          id: Date.now(), subject, body, fromName,
-          recipients: allRecipients,
+          id: Date.now(), subject, body, fromName, recipients: allRecipients,
           sentCount: data.sentCount, failedCount: data.failedCount,
-          failed: data.results?.failed || [],
-          sentAt: new Date().toISOString(),
+          failed: data.results?.failed || [], sentAt: new Date().toISOString(),
         }, ...prev]);
         setSubject(""); setBody(""); setSelected(new Set()); setCustomEmails([]);
       }
     } catch (e) {
-      setResult({ ok: false, error: e.message });
-      setShowResult(true);
-    } finally {
-      setSending(false);
-    }
+      setResult({ ok: false, error: e.message }); setShowResult(true);
+    } finally { setSending(false); }
   };
 
-  // ── preview html ──────────────────────────────────────────────────────────
   const previewHtml = useMemo(() => {
     const formatted = (body || "")
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\n/g, "<br/>");
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/\n/g,"<br/>");
     return `<div style="font-family:'Segoe UI',Arial,sans-serif;background:#f3f4f6;padding:20px 14px;border-radius:8px;">
 <div style="font-size:11px;font-weight:700;color:#6366f1;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">${fromName||"LeaderLab"}</div>
 <div style="height:2px;background:linear-gradient(90deg,#6366f1,#a5b4fc);border-radius:2px;margin-bottom:14px;"></div>
@@ -190,13 +335,11 @@ export default function AdminMailer() {
 <div style="margin-top:16px;padding-top:12px;border-top:1px solid #f3f4f6;">
 <a style="display:inline-block;background:#4f46e5;color:#fff;padding:9px 20px;border-radius:7px;font-size:13px;font-weight:700;text-decoration:none;">Go to LeaderLab →</a>
 </div></div>
-<p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:12px;">${fromName||"LeaderLab"} · leaderlab.in · You're receiving this as a LeaderLab user.</p>
-</div>`;
+<p style="text-align:center;font-size:11px;color:#9ca3af;margin-top:12px;">${fromName||"LeaderLab"} · leaderlab.in · You're receiving this as a LeaderLab user.</p></div>`;
   }, [body, subject, fromName]);
 
   const canSend = allRecipients.length > 0 && subject.trim() && body.trim();
 
-  // ── loading / error ───────────────────────────────────────────────────────
   if (loading) return (
     <div style={S.fullCenter}>
       <div style={S.spinner} />
@@ -209,7 +352,6 @@ export default function AdminMailer() {
     </div>
   );
 
-  // ── render ────────────────────────────────────────────────────────────────
   return (
     <div style={S.shell}>
       <style>{`
@@ -236,7 +378,7 @@ export default function AdminMailer() {
             { id:"compose", emoji:"✏️", label:"Compose" },
             { id:"sent",    emoji:"📤", label:"Sent" },
           ].map(t => (
-            <button key={t.id} style={{ ...S.navBtn, ...(sideTab===t.id?S.navBtnActive:{}) }}
+            <button key={t.id} style={{ ...S.navBtn, ...(sideTab===t.id ? S.navBtnActive : {}) }}
               onClick={() => { setSideTab(t.id); setViewSent(null); }}>
               <span style={{ fontSize:16 }}>{t.emoji}</span>
               <span>{t.label}</span>
@@ -263,6 +405,18 @@ export default function AdminMailer() {
             </div>
           ))}
         </div>
+
+        {/* ── Logout ── */}
+        <div style={{ marginTop:"auto", padding:"12px 16px", borderTop:"1px solid #e8eaed" }}>
+          <button onClick={handleLogout} style={{
+            width:"100%", display:"flex", alignItems:"center", gap:10,
+            padding:"9px 14px", borderRadius:30, border:"none",
+            background:"transparent", fontSize:13, fontWeight:500,
+            color:"#d93025", cursor:"pointer", textAlign:"left",
+          }}>
+            <span style={{ fontSize:16 }}>🚪</span> Sign out
+          </button>
+        </div>
       </aside>
 
       {/* ══ MAIN ══ */}
@@ -271,9 +425,7 @@ export default function AdminMailer() {
         {/* ─── SENT TAB ─── */}
         {sideTab === "sent" && (
           <div style={{ flex:1, overflowY:"auto" }}>
-            <div style={S.tabHeader}>
-              <h2 style={S.tabTitle}>📤 Sent</h2>
-            </div>
+            <div style={S.tabHeader}><h2 style={S.tabTitle}>📤 Sent</h2></div>
             {viewSent ? (
               <div style={{ padding:"16px 20px" }}>
                 <button style={S.backBtn} onClick={()=>setViewSent(null)}>← Back</button>
@@ -334,8 +486,6 @@ export default function AdminMailer() {
 
             {/* ── LEFT: users ── */}
             <div style={{ display:"flex", flexDirection:"column", borderRight:"1px solid #e8eaed", background:"#fff", overflow:"hidden" }}>
-
-              {/* search */}
               <div style={{ padding:"12px 12px 8px", borderBottom:"1px solid #f3f4f6" }}>
                 <div style={{ display:"flex", gap:6 }}>
                   <div style={{ flex:1, display:"flex", alignItems:"center", gap:7, background:"#f1f3f4", borderRadius:24, padding:"7px 13px" }}>
@@ -347,7 +497,6 @@ export default function AdminMailer() {
                     style={{ ...S.iconBtn, background:filterOpen?"#ede9fe":"transparent", color:filterOpen?"#7c3aed":"#6b7280" }}
                     onClick={()=>setFilterOpen(o=>!o)}>⚙️</button>
                 </div>
-
                 {filterOpen && (
                   <div style={{ marginTop:10, animation:"slideIn 0.15s ease" }}>
                     <select style={S.filterSelect} value={companyFilter} onChange={e=>setCompanyFilter(e.target.value)}>
@@ -370,7 +519,6 @@ export default function AdminMailer() {
                 )}
               </div>
 
-              {/* bulk bar */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"7px 14px", background:"#fafafa", borderBottom:"1px solid #f3f4f6" }}>
                 <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer", fontSize:12, color:"#374151" }}>
                   <input type="checkbox" style={{ accentColor:"#6366f1" }}
@@ -381,7 +529,6 @@ export default function AdminMailer() {
                 <span style={{ fontSize:11, color:"#9ca3af" }}>{selected.size} checked</span>
               </div>
 
-              {/* user list */}
               <div style={{ flex:1, overflowY:"auto" }}>
                 {filtered.length===0 && (
                   <div style={{ textAlign:"center", padding:40, color:"#9ca3af", fontSize:13 }}>No users match filters.</div>
@@ -422,8 +569,6 @@ export default function AdminMailer() {
 
             {/* ── RIGHT: compose ── */}
             <div style={{ display:"flex", flexDirection:"column", background:"#f6f8fc", padding:14, gap:10, overflow:"hidden" }}>
-
-              {/* toast */}
               {showResult && result && (
                 <div style={{ padding:"10px 14px", borderRadius:10, fontSize:13, fontWeight:600,
                   display:"flex", justifyContent:"space-between", alignItems:"center",
@@ -436,10 +581,7 @@ export default function AdminMailer() {
                 </div>
               )}
 
-              {/* compose card */}
               <div style={{ flex:1, background:"#fff", borderRadius:14, border:"1px solid #e5e7eb", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,0.06)" }}>
-
-                {/* card header */}
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"13px 18px", borderBottom:"1px solid #f3f4f6", background:"#fafafa" }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                     <span style={{ fontSize:15 }}>✏️</span>
@@ -457,17 +599,13 @@ export default function AdminMailer() {
                   </div>
                 </div>
 
-                {/* card body */}
                 <div style={{ flex:1, overflowY:"auto", padding:"0 18px 18px" }}>
                   {!preview ? (
                     <>
-                      {/* From */}
                       <div style={S.fieldRow}>
                         <span style={S.fieldLabel}>From</span>
                         <input style={S.fieldInput} value={fromName} onChange={e=>setFromName(e.target.value)} placeholder="LeaderLab" />
                       </div>
-
-                      {/* To: pills */}
                       <div style={{ ...S.fieldRow, alignItems:"flex-start" }}>
                         <span style={{ ...S.fieldLabel, paddingTop:4 }}>To</span>
                         <div style={{ flex:1, display:"flex", flexWrap:"wrap", gap:5, minHeight:28 }}>
@@ -477,13 +615,7 @@ export default function AdminMailer() {
                           {allRecipients.map(e => {
                             const isCustom = customEmails.includes(e);
                             return (
-                              <span key={e} style={{
-                                display:"inline-flex", alignItems:"center", gap:4,
-                                padding:"3px 8px", borderRadius:12, fontSize:11, fontWeight:600,
-                                background: isCustom?"#fef3c7":"#ede9fe",
-                                color: isCustom?"#92400e":"#5b21b6",
-                                maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
-                              }}>
+                              <span key={e} style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"3px 8px", borderRadius:12, fontSize:11, fontWeight:600, background: isCustom?"#fef3c7":"#ede9fe", color: isCustom?"#92400e":"#5b21b6", maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                                 <span style={{ width:6,height:6,borderRadius:"50%",background:isCustom?"#d97706":"#7c3aed",flexShrink:0 }} />
                                 {e}
                                 <span style={{ cursor:"pointer", opacity:0.6, fontSize:13, marginLeft:2 }} onClick={()=>removeRecipient(e)}>×</span>
@@ -492,8 +624,6 @@ export default function AdminMailer() {
                           })}
                         </div>
                       </div>
-
-                      {/* Custom email add */}
                       <div style={{ padding:"8px 0 6px", borderBottom:"1px solid #f3f4f6" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                           <span style={{ fontSize:11, color:"#9ca3af", whiteSpace:"nowrap", width:52 }}>+ Custom</span>
@@ -511,14 +641,10 @@ export default function AdminMailer() {
                         </div>
                         {customError && <p style={{ fontSize:11, color:"#dc2626", margin:"4px 0 0" }}>{customError}</p>}
                       </div>
-
-                      {/* Subject */}
                       <div style={S.fieldRow}>
                         <span style={S.fieldLabel}>Subject</span>
                         <input style={S.fieldInput} placeholder="Your subject line…" value={subject} onChange={e=>setSubject(e.target.value)} />
                       </div>
-
-                      {/* Body */}
                       <div style={{ marginTop:10 }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
                           <span style={{ fontSize:11, color:"#9ca3af" }}>Tip: use **text** for bold</span>
@@ -527,12 +653,9 @@ export default function AdminMailer() {
                         <textarea
                           style={{ width:"100%", minHeight:200, border:"1px solid #e5e7eb", borderRadius:10, padding:"12px 14px", fontSize:13, color:"#111827", lineHeight:1.75, fontFamily:"inherit", resize:"vertical", background:"#fafafa" }}
                           placeholder={"Hi there,\n\nWe wanted to share something exciting with you…\n\n**Key highlight** — something important.\n\nThanks for being part of LeaderLab!"}
-                          value={body}
-                          onChange={e=>setBody(e.target.value)}
+                          value={body} onChange={e=>setBody(e.target.value)}
                         />
                       </div>
-
-                      {/* legend */}
                       <div style={{ fontSize:11, color:"#9ca3af", marginTop:10, display:"flex", alignItems:"center", gap:5 }}>
                         <span style={{ width:7,height:7,borderRadius:"50%",background:"#7c3aed",display:"inline-block" }} /> Registered user
                         <span style={{ width:7,height:7,borderRadius:"50%",background:"#d97706",display:"inline-block",marginLeft:12 }} /> Custom email
@@ -558,7 +681,6 @@ export default function AdminMailer() {
                 </div>
               </div>
             </div>
-
           </div>
         )}
       </main>
@@ -566,10 +688,37 @@ export default function AdminMailer() {
   );
 }
 
-// ── shared styles ─────────────────────────────────────────────────────────────
+
+/* ═══════════════════════════════════════════════════════════════
+   ROOT EXPORT — gate check
+═══════════════════════════════════════════════════════════════ */
+export default function Page() {
+  const [authed, setAuthed]   = useState(false);
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    // Check sessionStorage on mount (client only)
+    if (sessionStorage.getItem(SESSION_KEY) === "1") {
+      setAuthed(true);
+    }
+    setChecked(true);
+  }, []);
+
+  // avoid flash of password gate on already-authed sessions
+  if (!checked) return null;
+
+  if (!authed) return <PasswordGate onUnlock={() => setAuthed(true)} />;
+
+  return <AdminMailerApp />;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   STYLES
+═══════════════════════════════════════════════════════════════ */
 const S = {
   shell: { display:"flex", height:"100vh", fontFamily:"'Google Sans','Segoe UI',Arial,sans-serif", background:"#f6f8fc", overflow:"hidden" },
-  sidebar: { width:220, background:"#fff", borderRight:"1px solid #e8eaed", display:"flex", flexDirection:"column", flexShrink:0, padding:"16px 0" },
+  sidebar: { width:220, background:"#fff", borderRight:"1px solid #e8eaed", display:"flex", flexDirection:"column", flexShrink:0, padding:"16px 0 0" },
   logoWrap: { display:"flex", alignItems:"center", gap:10, padding:"0 16px 16px" },
   logoEmoji: { fontSize:22 },
   logoTitle: { fontSize:15, fontWeight:800, color:"#1e1b4b", lineHeight:1.2 },
@@ -589,7 +738,7 @@ const S = {
   detailCard: { background:"#fff", border:"1px solid #e5e7eb", borderRadius:12, padding:"20px 22px" },
   bodyPre: { background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:8, padding:"12px 14px", fontSize:13, color:"#374151", lineHeight:1.75, whiteSpace:"pre-wrap" },
   greenBadge: { fontSize:11, fontWeight:600, background:"#dcfce7", color:"#166534", padding:"2px 8px", borderRadius:10 },
-  redBadge: { fontSize:11, fontWeight:600, background:"#fee2e2", color:"#991b1b", padding:"2px 8px", borderRadius:10 },
+  redBadge:   { fontSize:11, fontWeight:600, background:"#fee2e2", color:"#991b1b",  padding:"2px 8px", borderRadius:10 },
   iconBtn: { border:"none", borderRadius:8, padding:"7px 10px", fontSize:16, cursor:"pointer" },
   filterSelect: { width:"100%", padding:"7px 10px", fontSize:12, border:"1px solid #e5e7eb", borderRadius:8, marginBottom:8, background:"#fff", color:"#374151" },
   filterLabel: { fontSize:11, color:"#6b7280", display:"block", marginBottom:2 },

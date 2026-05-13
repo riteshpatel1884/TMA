@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useApplications } from "../../context/ApplicationsContext";
 import Dashboard from "../../Components/Dashboard";
 import AddJobModal from "../../Components/AddJobModal";
+import DashboardSkeleton from "./Dashboardskeleton";
 
 export default function DashboardPage() {
-  const { applications, addApplication, updateApplication } = useApplications();
+  const { applications, addApplication, updateApplication, loading } = useApplications();
   const [showModal, setShowModal] = useState(false);
   const router = useRouter();
 
@@ -26,12 +27,16 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <Dashboard
-        applications={applications}
-        onAddClick={() => setShowModal(true)}
-        onUpdateStatus={updateApplication}
-        setActiveTab={(tab) => router.push(`/${tab}`)}
-      />
+      {loading ? (
+        <DashboardSkeleton />
+      ) : (
+        <Dashboard
+          applications={applications}
+          onAddClick={() => setShowModal(true)}
+          onUpdateStatus={updateApplication}
+          setActiveTab={(tab) => router.push(`/${tab}`)}
+        />
+      )}
 
       {showModal && (
         <AddJobModal
