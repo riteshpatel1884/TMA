@@ -936,6 +936,79 @@ function avatarColor(email) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   SIDEBAR CONTENT  ← extracted outside AdminMailerApp to fix
+   "Cannot create components during render" error
+═══════════════════════════════════════════════════════════════ */
+function SidebarContent({
+  sideTab, setSideTab, setViewSent,
+  setDrawerOpen,
+  users, filtered, allRecipients, sentLog,
+  handleLogout,
+}) {
+  return (
+    <>
+      <div style={S.logoWrap}>
+        <span style={S.logoEmoji}>✉️</span>
+        <div style={{ flex:1 }}>
+          <div style={S.logoTitle}>Mail Center</div>
+          <div style={S.logoSub}>LeaderLab Admin</div>
+        </div>
+        <button
+          onClick={() => setDrawerOpen(false)}
+          style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#9ca3af", lineHeight:1, padding:4 }}
+          className="ll-drawer-close"
+        >×</button>
+      </div>
+
+      <nav style={{ padding:"8px" }}>
+        {[
+          { id:"compose", emoji:"✏️", label:"Compose" },
+          { id:"sent",    emoji:"📤", label:"Sent" },
+        ].map(t => (
+          <button key={t.id}
+            style={{ ...S.navBtn, ...(sideTab===t.id ? S.navBtnActive : {}) }}
+            onClick={() => { setSideTab(t.id); setViewSent(null); setDrawerOpen(false); }}>
+            <span style={{ fontSize:16 }}>{t.emoji}</span>
+            <span>{t.label}</span>
+            {t.id==="sent" && sentLog.length>0 && (
+              <span style={S.navBadge}>{sentLog.length}</span>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      <div style={{ height:1, background:"#e8eaed", margin:"12px 0" }} />
+
+      <div style={{ padding:"0 16px" }}>
+        <p style={S.statSection}>Overview</p>
+        {[
+          ["Registered", users.length],
+          ["Showing",    filtered.length],
+          ["Selected",   allRecipients.length],
+          ["Sent total", sentLog.reduce((a,s)=>a+s.sentCount,0)],
+        ].map(([label, val]) => (
+          <div key={label} style={S.statRow}>
+            <span style={S.statLabel}>{label}</span>
+            <span style={{ ...S.statVal, ...(label==="Selected"?{color:"#6366f1",fontWeight:700}:{}) }}>{val}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop:"auto", padding:"12px 16px", borderTop:"1px solid #e8eaed" }}>
+        <button onClick={handleLogout} style={{
+          width:"100%", display:"flex", alignItems:"center", gap:10,
+          padding:"9px 14px", borderRadius:30, border:"none",
+          background:"transparent", fontSize:13, fontWeight:500,
+          color:"#d93025", cursor:"pointer", textAlign:"left",
+        }}>
+          <span style={{ fontSize:16 }}>🚪</span> Sign out
+        </button>
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
    MAIN ADMIN MAILER
 ═══════════════════════════════════════════════════════════════ */
 function AdminMailerApp() {
@@ -1082,6 +1155,14 @@ function AdminMailerApp() {
 
   const canSend = allRecipients.length > 0 && subject.trim() && body.trim();
 
+  // Shared props for SidebarContent
+  const sidebarProps = {
+    sideTab, setSideTab, setViewSent,
+    setDrawerOpen,
+    users, filtered, allRecipients, sentLog,
+    handleLogout,
+  };
+
   if (loading) return (
     <div style={S.fullCenter}>
       <div style={S.spinner} />
@@ -1092,69 +1173,6 @@ function AdminMailerApp() {
     <div style={S.fullCenter}>
       <div style={{ background:"#fee2e2", color:"#991b1b", padding:"14px 22px", borderRadius:12, fontSize:14, fontWeight:600 }}>⚠ {fetchError}</div>
     </div>
-  );
-
-  // Shared sidebar content (used in both desktop aside and mobile drawer)
-  const SidebarContent = () => (
-    <>
-      <div style={S.logoWrap}>
-        <span style={S.logoEmoji}>✉️</span>
-        <div style={{ flex:1 }}>
-          <div style={S.logoTitle}>Mail Center</div>
-          <div style={S.logoSub}>LeaderLab Admin</div>
-        </div>
-        <button
-          onClick={() => setDrawerOpen(false)}
-          style={{ background:"none", border:"none", fontSize:22, cursor:"pointer", color:"#9ca3af", lineHeight:1, padding:4 }}
-          className="ll-drawer-close"
-        >×</button>
-      </div>
-
-      <nav style={{ padding:"8px" }}>
-        {[
-          { id:"compose", emoji:"✏️", label:"Compose" },
-          { id:"sent",    emoji:"📤", label:"Sent" },
-        ].map(t => (
-          <button key={t.id}
-            style={{ ...S.navBtn, ...(sideTab===t.id ? S.navBtnActive : {}) }}
-            onClick={() => { setSideTab(t.id); setViewSent(null); setDrawerOpen(false); }}>
-            <span style={{ fontSize:16 }}>{t.emoji}</span>
-            <span>{t.label}</span>
-            {t.id==="sent" && sentLog.length>0 && (
-              <span style={S.navBadge}>{sentLog.length}</span>
-            )}
-          </button>
-        ))}
-      </nav>
-
-      <div style={{ height:1, background:"#e8eaed", margin:"12px 0" }} />
-
-      <div style={{ padding:"0 16px" }}>
-        <p style={S.statSection}>Overview</p>
-        {[
-          ["Registered", users.length],
-          ["Showing",    filtered.length],
-          ["Selected",   allRecipients.length],
-          ["Sent total", sentLog.reduce((a,s)=>a+s.sentCount,0)],
-        ].map(([label, val]) => (
-          <div key={label} style={S.statRow}>
-            <span style={S.statLabel}>{label}</span>
-            <span style={{ ...S.statVal, ...(label==="Selected"?{color:"#6366f1",fontWeight:700}:{}) }}>{val}</span>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ marginTop:"auto", padding:"12px 16px", borderTop:"1px solid #e8eaed" }}>
-        <button onClick={handleLogout} style={{
-          width:"100%", display:"flex", alignItems:"center", gap:10,
-          padding:"9px 14px", borderRadius:30, border:"none",
-          background:"transparent", fontSize:13, fontWeight:500,
-          color:"#d93025", cursor:"pointer", textAlign:"left",
-        }}>
-          <span style={{ fontSize:16 }}>🚪</span> Sign out
-        </button>
-      </div>
-    </>
   );
 
   return (
@@ -1240,13 +1258,13 @@ function AdminMailerApp() {
       {/* Mobile drawer sidebar */}
       {drawerOpen && (
         <div className="ll-drawer">
-          <SidebarContent />
+          <SidebarContent {...sidebarProps} />
         </div>
       )}
 
       {/* Desktop sidebar */}
       <aside style={S.sidebar} className="ll-sidebar">
-        <SidebarContent />
+        <SidebarContent {...sidebarProps} />
       </aside>
 
       {/* Main content */}
