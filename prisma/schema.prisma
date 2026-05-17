@@ -7,30 +7,28 @@ datasource db {
 }
 
 model Application {
-  id               String    @id @default(cuid())
-  clerkUserId      String    @map("clerk_user_id")
-  company          String
-  role             String
-  jobType          String    @default("Job") @map("job_type")
-  applyType        String    @default("Direct Apply") @map("apply_type")
-  platform         String?
-  jobLink          String?   @map("job_link")
-  dateApplied      DateTime? @map("date_applied") @db.Date
-  status           String    @default("Applied")
-  workType         String    @default("Onsite") @map("work_type")
-  priority         String    @default("Medium")
-  recruiterName    String?   @map("recruiter_name")
-  recruiterContact String?   @map("recruiter_contact")
-  followUpDate     DateTime? @map("follow_up_date") @db.Date
-  salary           String?
-  resumeVersion    String?   @map("resume_version")
-  attachmentLink   String?   @map("attachment_link")
-  notes            String?
-  statusHistory    Json      @default("[]") @map("status_history")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  id              String    @id @default(cuid())
+  clerkUserId     String    @map("clerk_user_id")
+  company         String
+  role            String
+  jobType         String    @default("Job") @map("job_type")
+  applyType       String    @default("Direct Apply") @map("apply_type")
+  platform        String?
+  jobLink         String?   @map("job_link")
+  dateApplied     DateTime? @map("date_applied") @db.Date
+  status          String    @default("Applied")
+  workType        String    @default("Onsite") @map("work_type")
+  followUpDate    DateTime? @map("follow_up_date") @db.Date
+  salary          String?
+  resumeVersion   String?   @map("resume_version")
+  notes           String?
+  rejectionReason String?   @map("rejection_reason")
 
-  prepTrackers     PrepTracker[]
+  statusHistory Json     @default("[]") @map("status_history")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  prepTrackers PrepTracker[]
 
   @@index([clerkUserId])
   @@index([clerkUserId, status])
@@ -38,27 +36,26 @@ model Application {
 }
 
 model PrepTracker {
-  id            String    @id @default(cuid())
-  clerkUserId   String    @map("clerk_user_id")
+  id          String  @id @default(cuid())
+  clerkUserId String  @map("clerk_user_id")
 
   applicationId String?      @map("application_id")
   application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
 
-  companyName   String    @map("company_name")
-  roundName     String    @default("Aptitude") @map("round_name")
-  roundDate     DateTime? @map("round_date") @db.Date
+  companyName String    @map("company_name")
+  roundName   String    @default("Aptitude") @map("round_name")
+  roundDate   DateTime? @map("round_date") @db.Date
 
-  // Email for day-complete & reminder notifications
-  notifyEmail   String?   @map("notify_email")
+  notifyEmail String? @map("notify_email")
 
-  totalTopics   Int       @default(0) @map("total_topics")
-  doneTopics    Int       @default(0) @map("done_topics")
+  totalTopics Int @default(0) @map("total_topics")
+  doneTopics  Int @default(0) @map("done_topics")
 
-  notes         String?
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  topics        PrepTopic[]
+  topics PrepTopic[]
 
   @@index([clerkUserId])
   @@index([applicationId])
@@ -70,11 +67,11 @@ model PrepTopic {
   trackerId String      @map("tracker_id")
   tracker   PrepTracker @relation(fields: [trackerId], references: [id], onDelete: Cascade)
 
-  name      String
-  category  String?
-  isCustom  Boolean  @default(false) @map("is_custom")
-  order     Int      @default(0)
-  daySlot   Int?     @map("day_slot")
+  name     String
+  category String?
+  isCustom Boolean @default(false) @map("is_custom")
+  order    Int     @default(0)
+  daySlot  Int?    @map("day_slot")
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -85,9 +82,9 @@ model PrepTopic {
 }
 
 model DailyTopicLog {
-  id        String    @id @default(cuid())
-  topicId   String    @map("topic_id")
-  topic     PrepTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  id      String    @id @default(cuid())
+  topicId String    @map("topic_id")
+  topic   PrepTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
   logDate   DateTime @map("log_date") @db.Date
   completed Boolean  @default(true)

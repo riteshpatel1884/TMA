@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import InsightsEngine from "./analytics/Insightsengine";
 import {
   PieChart,
   Pie,
@@ -15,93 +16,59 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  LineChart,
-  Line,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  ScatterChart,
-  Scatter,
-  ZAxis,
 } from "recharts";
 
-// ── Kill ALL Recharts focus outlines & white backgrounds globally ─────────
+// ── Recharts reset ────────────────────────────────────────────────────────
 const RECHARTS_RESET = `
-  /* Nuclear option: remove every outline/bg from recharts tree */
-  .recharts-wrapper,
-  .recharts-wrapper *,
-  .recharts-surface,
-  .recharts-surface *,
-  svg.recharts-surface,
-  .recharts-layer,
-  .recharts-layer *,
-  .recharts-responsive-container,
-  .recharts-responsive-container * {
+  .recharts-wrapper,.recharts-wrapper *,.recharts-surface,.recharts-surface *,
+  svg.recharts-surface,.recharts-layer,.recharts-layer *,
+  .recharts-responsive-container,.recharts-responsive-container * {
     outline: none !important;
     -webkit-tap-highlight-color: transparent !important;
-    -webkit-focus-ring-color: transparent !important;
   }
-  .recharts-wrapper,
-  .recharts-wrapper:focus,
-  .recharts-wrapper:focus-within,
-  .recharts-wrapper:focus-visible,
-  .recharts-wrapper:active,
-  .recharts-surface:focus,
-  .recharts-surface:active,
-  svg.recharts-surface:focus,
-  svg.recharts-surface:active {
-    outline: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
+  .recharts-wrapper,.recharts-wrapper:focus,.recharts-wrapper:focus-within,
+  .recharts-surface:focus,svg.recharts-surface:focus {
+    outline: none !important; box-shadow: none !important; background: transparent !important;
   }
-  /* The inner <div> recharts wraps the SVG in */
-  .recharts-wrapper > div {
-    outline: none !important;
-    background: transparent !important;
-  }
-  /* SVG itself and background rect */
-  .recharts-surface,
-  .recharts-surface > rect:first-child {
-    fill: transparent !important;
-    background: transparent !important;
-  }
-  /* Kill all interactive element focus rings */
-  .recharts-sector:focus,
-  .recharts-sector:focus-visible,
-  .recharts-bar-rectangle:focus,
-  .recharts-bar-rectangle:focus-visible,
-  .recharts-curve:focus,
-  .recharts-dot:focus,
-  .recharts-dot:focus-visible,
-  .recharts-symbols:focus {
-    outline: none !important;
-    stroke: none !important;
-  }
-  /* Kill the grey/white hover rectangle on bar charts */
-  .recharts-rectangle.recharts-tooltip-cursor {
-    fill: rgba(255,255,255,0.04) !important;
-  }
-  /* Pie sector active stroke (white ring on click) */
-  .recharts-pie-sector path:focus,
-  .recharts-pie-sector path:active {
-    outline: none !important;
-    stroke: none !important;
-  }
+  .recharts-wrapper > div { outline: none !important; background: transparent !important; }
+  .recharts-surface,.recharts-surface > rect:first-child { fill: transparent !important; background: transparent !important; }
+  .recharts-sector:focus,.recharts-bar-rectangle:focus,.recharts-curve:focus,.recharts-dot:focus { outline: none !important; stroke: none !important; }
+  .recharts-rectangle.recharts-tooltip-cursor { fill: rgba(255,255,255,0.04) !important; }
+  .recharts-pie-sector path:focus,.recharts-pie-sector path:active { outline: none !important; stroke: none !important; }
 `;
 
-const MIN_DATA_THRESHOLD = 5;
+const THRESHOLDS = {
+  PLATFORM_CHART: 3,
+  DONUT_CHART: 5,
+  WEEKLY_CHART: 3,
+  GHOST_RATE: 5,
+  ROLE_INSIGHTS: 5,
+  CONSISTENCY: 7,
+  HEALTH_SCORE: 3,
+};
+
+const STATUS_COLORS = {
+  Applied: "#3b82f6",
+  Interview: "#f59e0b",
+  Offer: "#22c55e",
+  Rejected: "#ef4444",
+};
+
+// ── Mobile detection hook ─────────────────────────────────────────────────
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 600);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
 
 function pct(num, denom) {
   if (!denom) return null;
   return ((num / denom) * 100).toFixed(1);
-}
-
-function fmtResponseDays(d) {
-  if (d === null || d === undefined) return "—";
-  if (d === 0) return "< 1 day";
-  return `${d}d`;
 }
 
 function getWeekKey(dateStr) {
@@ -112,10 +79,9 @@ function getWeekKey(dateStr) {
   return monday.toISOString().slice(0, 10);
 }
 
-// ── Shared tooltip style (dark, no white bg) ──────────────────────────────
 const tooltipStyle = {
-  background: "rgba(20,20,25,0.96)",
-  border: "1px solid rgba(108,99,255,0.25)",
+  background: "rgba(14,14,18,0.97)",
+  border: "1px solid rgba(108,99,255,0.2)",
   borderRadius: 10,
   boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
   padding: "10px 14px",
@@ -133,7 +99,6 @@ const tooltipLabelStyle = {
   marginBottom: 4,
 };
 
-// Custom Tooltip renderer
 function CustomTooltip({ active, payload, label, formatter }) {
   if (!active || !payload || !payload.length) return null;
   return (
@@ -149,70 +114,329 @@ function CustomTooltip({ active, payload, label, formatter }) {
   );
 }
 
-// ── Shared chart card wrapper ─────────────────────────────────────────────
-function ChartCard({ title, children, style }) {
+// ── Locked Card ───────────────────────────────────────────────────────────
+function LockedCard({ title, unlockAt, current, icon = "🔒" }) {
+  const remaining = Math.max(0, unlockAt - current);
+  const progress = Math.min(100, (current / unlockAt) * 100);
   return (
-    <div
-      tabIndex={-1}
-      style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--radius)",
-        padding: "20px",
-        marginBottom: 16,
-        outline: "none",
-        userSelect: "none",
-        WebkitTapHighlightColor: "transparent",
-        ...style,
-      }}
-    >
-      <div
-        style={{
-          fontFamily: "'Syne', sans-serif",
-          fontSize: 11,
-          fontWeight: 700,
-          color: "var(--text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: "0.8px",
-          marginBottom: 16,
-        }}
-      >
-        {title}
+    <div style={{
+      background: "var(--bg-card)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius)",
+      padding: "24px 20px",
+      marginBottom: 16,
+      textAlign: "center",
+      position: "relative",
+      overflow: "hidden",
+    }}>
+      <div style={{
+        position: "absolute", inset: 0, opacity: 0.03,
+        backgroundImage: "radial-gradient(circle, #6c63ff 1px, transparent 1px)",
+        backgroundSize: "20px 20px",
+      }} />
+      <div style={{ fontSize: 28, marginBottom: 8 }}>{icon}</div>
+      <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>{title}</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
+        Apply to <strong style={{ color: "#6c63ff" }}>{remaining} more</strong> job{remaining !== 1 ? "s" : ""} to unlock.
+      </div>
+      <div style={{ height: 4, background: "rgba(108,99,255,0.12)", borderRadius: 99, overflow: "hidden", maxWidth: 200, margin: "0 auto" }}>
+        <div style={{ height: "100%", width: `${progress}%`, background: "linear-gradient(90deg, #6c63ff, #22c55e)", borderRadius: 99, transition: "width 0.5s" }} />
+      </div>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>{current} / {unlockAt} applications</div>
+    </div>
+  );
+}
+
+// ── Chart Card ────────────────────────────────────────────────────────────
+function ChartCard({ title, children, badge, style }) {
+  return (
+    <div tabIndex={-1} style={{
+      background: "var(--bg-card)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius)",
+      padding: "20px",
+      marginBottom: 16,
+      outline: "none",
+      userSelect: "none",
+      WebkitTapHighlightColor: "transparent",
+      ...style,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div style={{
+          fontFamily: "'Syne', sans-serif", fontSize: 11, fontWeight: 700,
+          color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.8px",
+        }}>{title}</div>
+        {badge && (
+          <div style={{
+            fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 99,
+            background: "rgba(108,99,255,0.12)", color: "#6c63ff",
+            fontFamily: "'DM Sans', sans-serif",
+          }}>{badge}</div>
+        )}
       </div>
       {children}
     </div>
   );
 }
 
-// ── Metric cards ──────────────────────────────────────────────────────────
-function MetricCard({ label, value, sub, color, lowData }) {
+function MetricCard({ label, value, sub, color, muted }) {
   return (
-    <div className="stat-card" style={{ position: "relative" }}>
+    <div className="stat-card">
       <div className="stat-label">{label}</div>
-      <div
-        className="stat-value"
-        style={{ color: color || "var(--text-primary)", fontSize: 28 }}
-      >
+      <div className="stat-value" style={{ color: muted ? "var(--text-muted)" : (color || "var(--text-primary)"), fontSize: 28 }}>
         {value}
       </div>
       {sub && <div className="stat-sub">{sub}</div>}
-      {lowData && (
-        <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
-          Based on {lowData} application{lowData !== 1 ? "s" : ""}
-        </div>
-      )}
     </div>
   );
 }
 
-// ── Application Funnel ─────────────────────────────────────────────────────
+// ── Health Score ──────────────────────────────────────────────────────────
+function HealthScore({ stats }) {
+  const isMobile = useIsMobile();
+  if (stats.total < THRESHOLDS.HEALTH_SCORE) {
+    return <LockedCard title="Placement Health Score" unlockAt={THRESHOLDS.HEALTH_SCORE} current={stats.total} icon="❤️" />;
+  }
+
+  const volumeScore = Math.min(100, stats.total * 4);
+  const callbackScore = Math.min(100, parseFloat(stats.callbackRate) * 3);
+  const consistencyScore = stats.consistencyScore;
+  const ghostPenalty = Math.max(0, 100 - stats.ghostRate);
+  const offerScore = Math.min(100, parseFloat(stats.offerRate) * 10);
+
+  const raw = volumeScore * 0.2 + callbackScore * 0.25 + consistencyScore * 0.2 + ghostPenalty * 0.2 + offerScore * 0.15;
+  const score = Math.round(Math.min(99, Math.max(1, raw)));
+
+  const getGrade = (s) => {
+    if (s >= 80) return { label: "Excellent", color: "#22c55e" };
+    if (s >= 60) return { label: "Good", color: "#6c63ff" };
+    if (s >= 40) return { label: "Fair", color: "#f59e0b" };
+    return { label: "Needs Work", color: "#ef4444" };
+  };
+  const grade = getGrade(score);
+
+  const components = [
+    { label: "Volume", value: Math.round(volumeScore) },
+    { label: "Callback Rate", value: Math.round(callbackScore) },
+    { label: "Consistency", value: Math.round(consistencyScore) },
+    { label: "Response Rate", value: Math.round(ghostPenalty) },
+    { label: "Offer Conv.", value: Math.round(offerScore) },
+  ];
+
+  const R = 44, C = 2 * Math.PI * R;
+  const filled = (score / 100) * C;
+  const ringSize = isMobile ? 100 : 130;
+  const cx = ringSize / 2;
+
+  return (
+    <ChartCard title="Placement Health Score" badge={grade.label}>
+      <div style={{ display: "flex", gap: isMobile ? 16 : 24, alignItems: "center", flexWrap: isMobile ? "nowrap" : "wrap" }}>
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <svg width={ringSize} height={ringSize} viewBox={`0 0 ${ringSize} ${ringSize}`}>
+            <circle cx={cx} cy={cx} r={R} fill="none" stroke="rgba(108,99,255,0.1)" strokeWidth={8} />
+            <circle cx={cx} cy={cx} r={R} fill="none" stroke={grade.color} strokeWidth={8}
+              strokeDasharray={`${filled} ${C}`} strokeLinecap="round"
+              transform={`rotate(-90 ${cx} ${cx})`}
+              style={{ transition: "stroke-dasharray 0.8s ease" }} />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ fontSize: isMobile ? 24 : 30, fontWeight: 800, color: grade.color, fontFamily: "'Syne', sans-serif", lineHeight: 1 }}>{score}</div>
+            <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>/ 100</div>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {components.map((c) => (
+            <div key={c.label} style={{ marginBottom: 7 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: isMobile ? 10 : 11, color: "var(--text-secondary)" }}>{c.label}</span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.value}/100</span>
+              </div>
+              <div style={{ height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 99, overflow: "hidden" }}>
+                <div style={{
+                  height: "100%", width: `${c.value}%`,
+                  background: c.value >= 70 ? "#22c55e" : c.value >= 40 ? "#6c63ff" : "#ef4444",
+                  borderRadius: 99, transition: "width 0.6s",
+                }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </ChartCard>
+  );
+}
+
+// ── Ghost Rate ────────────────────────────────────────────────────────────
+function GhostRateCard({ stats }) {
+  if (stats.total < THRESHOLDS.GHOST_RATE) {
+    return <LockedCard title="Ghost Rate" unlockAt={THRESHOLDS.GHOST_RATE} current={stats.total} icon="👻" />;
+  }
+
+  const { ghostCount, ghostRate, total } = stats;
+  const isHigh = ghostRate > 50;
+
+  return (
+    <ChartCard title="Ghost Rate" badge={isHigh ? "High" : "Normal"}>
+      <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ textAlign: "center", flexShrink: 0 }}>
+          <div style={{ fontSize: 48, fontWeight: 800, lineHeight: 1, color: isHigh ? "#ef4444" : "#f59e0b", fontFamily: "'Syne', sans-serif" }}>
+            {ghostRate.toFixed(0)}<span style={{ fontSize: 22 }}>%</span>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>no response</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 160 }}>
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7, borderLeft: `2px solid ${isHigh ? "#ef4444" : "#f59e0b"}`, paddingLeft: 12 }}>
+            <strong style={{ color: "var(--text-primary)" }}>{ghostCount} of {total}</strong> applications received no response after 14 days.
+            {isHigh ? " Try personalising your outreach or targeting roles with higher match." : " Within normal range — keep applying consistently."}
+          </div>
+          <div style={{ marginTop: 12, height: 6, background: "rgba(255,255,255,0.06)", borderRadius: 99, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${ghostRate}%`, background: isHigh ? "#ef4444" : "#f59e0b", borderRadius: 99, transition: "width 0.6s" }} />
+          </div>
+        </div>
+      </div>
+    </ChartCard>
+  );
+}
+
+// ── Consistency ───────────────────────────────────────────────────────────
+function ConsistencyCard({ stats }) {
+  const isMobile = useIsMobile();
+  if (stats.total < THRESHOLDS.CONSISTENCY) {
+    return <LockedCard title="Application Consistency" unlockAt={THRESHOLDS.CONSISTENCY} current={stats.total} icon="📅" />;
+  }
+
+  const { weeksActive, weeksTotal, maxGapDays, avgPerActiveWeek, consistencyScore } = stats.consistencyData;
+  const isConsistent = consistencyScore >= 60;
+
+  return (
+    <ChartCard title="Application Consistency">
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+        {[
+          { label: "Active Weeks", value: `${weeksActive}/${weeksTotal}`, color: "#6c63ff" },
+          { label: "Avg / Week", value: avgPerActiveWeek.toFixed(1), color: "#3b82f6" },
+          { label: "Longest Gap", value: maxGapDays > 0 ? `${maxGapDays}d` : "—", color: maxGapDays > 10 ? "#ef4444" : "#22c55e" },
+        ].map((m) => (
+          <div key={m.label} style={{
+            flex: 1, minWidth: isMobile ? 70 : 80,
+            background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)",
+            borderRadius: 8, padding: "10px 8px", textAlign: "center",
+          }}>
+            <div style={{ fontSize: isMobile ? 16 : 20, fontWeight: 800, color: m.color, fontFamily: "'Syne', sans-serif" }}>{m.value}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{m.label}</div>
+          </div>
+        ))}
+      </div>
+      {maxGapDays > 10 && (
+        <div style={{ fontSize: 12, color: "#f59e0b", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 8, padding: "8px 12px" }}>
+          ⚠ You had a {maxGapDays}-day gap. Consistent daily effort leads to better outcomes.
+        </div>
+      )}
+      {isConsistent && (
+        <div style={{ fontSize: 12, color: "#22c55e", background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, padding: "8px 12px" }}>
+          ✓ Strong consistency — you're applying regularly across weeks.
+        </div>
+      )}
+    </ChartCard>
+  );
+}
+
+// ── Resume Performance ────────────────────────────────────────────────────
+function ResumePerformanceCard({ stats }) {
+  const { resumePerf } = stats;
+  if (!resumePerf || resumePerf.length < 2) {
+    return (
+      <ChartCard title="Resume Performance">
+        <div style={{ textAlign: "center", padding: "20px 0" }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+          <div style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 4 }}>Use multiple resume versions to compare performance.</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Tag applications with a resume version to unlock this.</div>
+        </div>
+      </ChartCard>
+    );
+  }
+
+  const best = resumePerf.reduce((a, b) => parseFloat(a.rate) > parseFloat(b.rate) ? a : b);
+  return (
+    <ChartCard title="Resume Performance">
+      {resumePerf.map((r) => (
+        <div key={r.name} style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 500 }}>{r.name}</span>
+              {r.name === best.name && (
+                <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "rgba(34,197,94,0.12)", color: "#22c55e" }}>BEST</span>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{r.total} apps</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: parseFloat(r.rate) > 15 ? "#22c55e" : "var(--text-primary)" }}>{r.rate}%</span>
+            </div>
+          </div>
+          <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 99, overflow: "hidden" }}>
+            <div style={{
+              height: "100%", width: `${Math.min(100, parseFloat(r.rate) * 3)}%`,
+              background: r.name === best.name ? "linear-gradient(90deg, #22c55e, #6c63ff)" : "linear-gradient(90deg, #6c63ff, #3b82f6)",
+              borderRadius: 99, transition: "width 0.6s",
+            }} />
+          </div>
+        </div>
+      ))}
+    </ChartCard>
+  );
+}
+
+// ── Role Insights ─────────────────────────────────────────────────────────
+function RoleInsightsCard({ stats }) {
+  if (stats.total < THRESHOLDS.ROLE_INSIGHTS) {
+    return <LockedCard title="Role Insights" unlockAt={THRESHOLDS.ROLE_INSIGHTS} current={stats.total} icon="🎯" />;
+  }
+  const { rolePerf } = stats;
+  if (!rolePerf || rolePerf.length < 2) {
+    return (
+      <ChartCard title="Role Insights">
+        <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "16px 0" }}>
+          Apply to more distinct roles to see performance comparisons.
+        </div>
+      </ChartCard>
+    );
+  }
+  const best = rolePerf[0];
+  const worst = rolePerf[rolePerf.length - 1];
+  return (
+    <ChartCard title="Role Insights">
+      {best && parseFloat(best.rate) > 0 && worst && best.name !== worst.name && (
+        <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7, borderLeft: "2px solid #6c63ff", paddingLeft: 12, marginBottom: 16 }}>
+          <strong style={{ color: "var(--text-primary)" }}>{best.name}</strong> roles perform{" "}
+          <strong style={{ color: "#22c55e" }}>
+            {parseFloat(worst.rate) > 0 ? `${(parseFloat(best.rate) / parseFloat(worst.rate)).toFixed(1)}x` : "significantly"} better
+          </strong>{" "}than <strong style={{ color: "var(--text-primary)" }}>{worst.name}</strong>.
+        </div>
+      )}
+      {rolePerf.map((r) => (
+        <div key={r.name} style={{ marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{r.name}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: parseFloat(r.rate) > 20 ? "#22c55e" : "var(--text-primary)" }}>
+              {r.rate}% <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>({r.total})</span>
+            </span>
+          </div>
+          <div style={{ height: 3, background: "rgba(255,255,255,0.05)", borderRadius: 99, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${Math.min(100, parseFloat(r.rate) * 3)}%`, background: r === best ? "#22c55e" : "#6c63ff", borderRadius: 99 }} />
+          </div>
+        </div>
+      ))}
+    </ChartCard>
+  );
+}
+
+// ── Funnel ────────────────────────────────────────────────────────────────
 function Funnel({ byStatus, total }) {
+  const isMobile = useIsMobile();
   const steps = [
     { label: "Applied", key: "Applied", color: "#3b82f6" },
     { label: "Interview", key: "Interview", color: "#f59e0b" },
     { label: "Offer", key: "Offer", color: "#22c55e" },
   ];
-
   return (
     <ChartCard title="Application Funnel">
       <div style={{ display: "flex", alignItems: "center", gap: 0, overflowX: "auto" }}>
@@ -221,38 +445,30 @@ function Funnel({ byStatus, total }) {
           const prevCount = i === 0 ? total : byStatus[steps[i - 1].key] || 0;
           const convRate = i > 0 && prevCount > 0 ? pct(count, prevCount) : null;
           return (
-            <div key={step.key} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 90 }}>
+            <div key={step.key} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: isMobile ? 70 : 90 }}>
               <div style={{ flex: 1 }}>
                 {convRate !== null && (
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", marginBottom: 4 }}>
-                    {convRate}% conv.
-                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", marginBottom: 4 }}>{convRate}% conv.</div>
                 )}
-                <div
-                  style={{
-                    height: 48,
-                    background: step.color,
-                    opacity: 0.18 + (count / (total || 1)) * 0.7,
-                    borderRadius: i === 0 ? "8px 0 0 8px" : i === steps.length - 1 ? "0 8px 8px 0" : 0,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: `1px solid ${step.color}`,
-                    borderRight: i < steps.length - 1 ? "none" : undefined,
-                  }}
-                >
-                  <span style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>{count}</span>
+                <div style={{
+                  height: isMobile ? 44 : 52,
+                  background: step.color,
+                  opacity: 0.18 + (count / (total || 1)) * 0.72,
+                  borderRadius: i === 0 ? "8px 0 0 8px" : i === steps.length - 1 ? "0 8px 8px 0" : 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  border: `1px solid ${step.color}`,
+                  borderRight: i < steps.length - 1 ? "none" : undefined,
+                }}>
+                  <span style={{ fontSize: isMobile ? 18 : 22, fontWeight: 800, color: "#fff" }}>{count}</span>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>
-                  {step.label}
-                </div>
+                <div style={{ fontSize: isMobile ? 10 : 11, color: "var(--text-muted)", textAlign: "center", marginTop: 6 }}>{step.label}</div>
               </div>
               {i < steps.length - 1 && (
                 <div style={{
                   width: 0, height: 0,
-                  borderTop: "24px solid transparent",
-                  borderBottom: "24px solid transparent",
-                  borderLeft: `14px solid ${step.color}`,
+                  borderTop: `${isMobile ? 22 : 26}px solid transparent`,
+                  borderBottom: `${isMobile ? 22 : 26}px solid transparent`,
+                  borderLeft: `${isMobile ? 10 : 14}px solid ${step.color}`,
                   opacity: 0.45, flexShrink: 0, zIndex: 1,
                 }} />
               )}
@@ -267,128 +483,135 @@ function Funnel({ byStatus, total }) {
   );
 }
 
-// ── Insights box ──────────────────────────────────────────────────────────
-function InsightsBox({ stats }) {
-  const insights = useMemo(() => {
-    const list = [];
-    const best = stats.platformPerf[0];
-    if (best && parseFloat(best.rate) > 0 && best.total >= 1)
-      list.push(`${best.name} has your best response rate at ${best.rate}% — prioritise it.`);
-    if (stats.byStatus.Offer === 0 && stats.total >= 3)
-      list.push("No offers yet. Consider refining your resume or increasing application volume.");
-    const workEntries = Object.entries(stats.byWorkType).sort((a, b) => b[1] - a[1]);
-    if (workEntries.length > 0) {
-      const [topType, topCount] = workEntries[0];
-      const topPct = Math.round((topCount / stats.total) * 100);
-      if (topPct >= 80) {
-        const alt = topType === "Onsite" ? "Remote or Hybrid" : "Onsite";
-        list.push(`${topPct}% of applications are ${topType} — consider exploring ${alt} roles.`);
-      }
-    }
-    if (stats.avgResponseDays !== null && stats.avgResponseDays > 14)
-      list.push(`Average response time is ${stats.avgResponseDays} days — follow up on older applications.`);
-    const cbRate = parseFloat(stats.callbackRate);
-    if (stats.total >= 5 && cbRate < 10)
-      list.push(`Callback rate is ${stats.callbackRate}%. Tailoring your applications per role may improve this.`);
-    if (list.length === 0)
-      list.push("Add more applications to unlock personalised insights.");
-    return list;
-  }, [stats]);
+// ── Status Donut ──────────────────────────────────────────────────────────
+function StatusDonutChart({ byStatus, total }) {
+  const isMobile = useIsMobile();
+  if (total < THRESHOLDS.DONUT_CHART) {
+    return <LockedCard title="Status Distribution" unlockAt={THRESHOLDS.DONUT_CHART} current={total} icon="🥧" />;
+  }
 
-  return (
-    <div style={{
-      background: "rgba(108,99,255,0.07)",
-      border: "1px solid rgba(108,99,255,0.2)",
-      borderRadius: "var(--radius)",
-      padding: "16px 20px",
-      marginBottom: 20,
-    }}>
-      <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 11, fontWeight: 700, color: "#6c63ff", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 12 }}>
-        ✦ Insights
-      </div>
-      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
-        {insights.map((text, i) => (
-          <li key={i} style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, paddingLeft: 14, borderLeft: "2px solid #6c63ff" }}>
-            {text}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// ── 1. Status Distribution — Donut ────────────────────────────────────────
-const STATUS_COLORS = { Applied: "#3b82f6", Interview: "#f59e0b", Offer: "#22c55e", Rejected: "#ef4444" };
-
-function StatusDonutChart({ byStatus }) {
   const data = Object.entries(byStatus)
     .filter(([, v]) => v > 0)
     .map(([name, value]) => ({ name, value, fill: STATUS_COLORS[name] || "#6c63ff" }));
 
-  if (!data.length) return null;
-
   const RADIAN = Math.PI / 180;
-  const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, name, percent }) => {
+  const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     const r = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + r * Math.cos(-midAngle * RADIAN);
     const y = cy + r * Math.sin(-midAngle * RADIAN);
-    if (percent < 0.06) return null;
+    if (percent < 0.08) return null;
     return (
-      <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={700}>
+      <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={700}>
         {`${(percent * 100).toFixed(0)}%`}
       </text>
     );
   };
 
+  const chartHeight = isMobile ? 180 : 220;
+  const outerR = isMobile ? 70 : 90;
+  const innerR = isMobile ? 42 : 58;
+
   return (
-    <ChartCard title="Status Distribution">
-      <ResponsiveContainer width="100%" height={260} style={{ background: "transparent", outline: "none" }}>
-        <PieChart style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <Pie isAnimationActive={false}
-            data={data}
-            cx="50%"
-            cy="50%"
-            innerRadius={65}
-            outerRadius={100}
-            paddingAngle={3}
-            dataKey="value"
-            labelLine={false}
-            label={renderLabel}
-            stroke="none"
-            style={{ outline: "none", background: "transparent" }} tabIndex={-1}
-          >
-            {data.map((entry, i) => (
-              <Cell key={i} fill={entry.fill} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
-            ))}
+    <ChartCard title="Status Distribution" style={{ flex: 1, minWidth: 0 }}>
+      <ResponsiveContainer width="100%" height={chartHeight} style={{ background: "transparent", outline: "none" }}>
+        <PieChart style={{ outline: "none" }} tabIndex={-1}>
+          <Pie isAnimationActive={false} data={data} cx="50%" cy="50%"
+            innerRadius={innerR} outerRadius={outerR}
+            paddingAngle={3} dataKey="value" labelLine={false} label={renderLabel} stroke="none" tabIndex={-1}>
+            {data.map((e, i) => <Cell key={i} fill={e.fill} tabIndex={-1} />)}
           </Pie>
-          <Tooltip
-            content={<CustomTooltip formatter={(v) => `${v} applications`} />}
-          />
-          <Legend
-            iconType="circle"
-            iconSize={8}
-            formatter={(value) => <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{value}</span>}
-          />
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v} apps`} />} />
+          <Legend iconType="circle" iconSize={7}
+            formatter={(v) => <span style={{ fontSize: isMobile ? 10 : 12, color: "var(--text-secondary)" }}>{v}</span>} />
         </PieChart>
       </ResponsiveContainer>
     </ChartCard>
   );
 }
 
-// ── 2. Weekly Trend — Stacked Area ────────────────────────────────────────
-function WeeklyTrendChart({ weeks }) {
-  if (!weeks || weeks.length === 0) return null;
+// ── Work Type Donut ───────────────────────────────────────────────────────
+const WORK_COLORS = ["#6c63ff", "#3b82f6", "#f59e0b", "#22c55e", "#ec4899"];
+
+function WorkTypeChart({ byWorkType, total }) {
+  const isMobile = useIsMobile();
+  if (total < THRESHOLDS.DONUT_CHART) {
+    return <LockedCard title="Work Type Split" unlockAt={THRESHOLDS.DONUT_CHART} current={total} icon="🏢" />;
+  }
+
+  const data = Object.entries(byWorkType)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value], i) => ({ name, value, fill: WORK_COLORS[i % WORK_COLORS.length] }));
+
+  const chartHeight = isMobile ? 180 : 220;
+  const outerR = isMobile ? 70 : 85;
+  const innerR = isMobile ? 38 : 50;
+
+  return (
+    <ChartCard title="Work Type Split" style={{ flex: 1, minWidth: 0 }}>
+      <ResponsiveContainer width="100%" height={chartHeight} style={{ background: "transparent", outline: "none" }}>
+        <PieChart style={{ outline: "none" }} tabIndex={-1}>
+          <Pie isAnimationActive={false} data={data} cx="50%" cy="50%"
+            innerRadius={innerR} outerRadius={outerR}
+            paddingAngle={4} dataKey="value" stroke="none" tabIndex={-1}>
+            {data.map((e, i) => <Cell key={i} fill={e.fill} tabIndex={-1} />)}
+          </Pie>
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v} (${pct(v, total)}%)`} />} />
+          <Legend iconType="circle" iconSize={7}
+            formatter={(v) => <span style={{ fontSize: isMobile ? 10 : 12, color: "var(--text-secondary)" }}>{v}</span>} />
+        </PieChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── Platform Bar ──────────────────────────────────────────────────────────
+function PlatformChart({ platformPerf, total }) {
+  const isMobile = useIsMobile();
+  if (total < THRESHOLDS.PLATFORM_CHART || !platformPerf || platformPerf.length === 0) {
+    return <LockedCard title="Platform Success Rate" unlockAt={THRESHOLDS.PLATFORM_CHART} current={total} icon="📊" />;
+  }
+
+  const data = platformPerf.map((p) => ({ name: p.name, rate: parseFloat(p.rate), total: p.total }));
+  const yWidth = isMobile ? 80 : 100;
+
+  return (
+    <ChartCard title="Platform Success Rate">
+      <ResponsiveContainer width="100%" height={Math.max(140, data.length * 40)} style={{ background: "transparent", outline: "none" }}>
+        <BarChart data={data} layout="vertical" style={{ outline: "none" }} tabIndex={-1}>
+          <defs>
+            <linearGradient id="gPlatform" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#6c63ff" />
+              <stop offset="100%" stopColor="#22c55e" />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
+          <XAxis type="number" tick={{ fill: "#555562", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+          <YAxis type="category" dataKey="name" tick={{ fill: "#8b8b9a", fontSize: isMobile ? 10 : 12 }} axisLine={false} tickLine={false} width={yWidth} />
+          <Tooltip content={<CustomTooltip formatter={(v) => `${v.toFixed(1)}%`} />} />
+          <Bar isAnimationActive={false} dataKey="rate" name="Success Rate" fill="url(#gPlatform)" radius={[0, 6, 6, 0]} barSize={16} tabIndex={-1} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// ── Weekly Trend ──────────────────────────────────────────────────────────
+function WeeklyTrendChart({ weeks, total }) {
+  const isMobile = useIsMobile();
+  if (total < THRESHOLDS.WEEKLY_CHART || !weeks || weeks.length === 0) {
+    return <LockedCard title="Weekly Application Trend" unlockAt={THRESHOLDS.WEEKLY_CHART} current={total} icon="📈" />;
+  }
+
   const data = weeks.map(([key, d]) => ({
     week: new Date(key).toLocaleDateString("en-IN", { month: "short", day: "2-digit" }),
     applied: d.applied,
     interviews: d.interviews || 0,
-    offers: d.offers || 0,
   }));
 
   return (
     <ChartCard title="Weekly Application Trend">
-      <ResponsiveContainer width="100%" height={240} style={{ background: "transparent", outline: "none" }}>
-        <AreaChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
+      <ResponsiveContainer width="100%" height={isMobile ? 180 : 220} style={{ background: "transparent", outline: "none" }}>
+        <AreaChart data={data} style={{ outline: "none" }} tabIndex={-1} margin={{ left: -10, right: 8 }}>
           <defs>
             <linearGradient id="gApplied" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4} />
@@ -398,463 +621,248 @@ function WeeklyTrendChart({ weeks }) {
               <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.4} />
               <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
             </linearGradient>
-            <linearGradient id="gOffer" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} />
-              <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-            </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-          <XAxis dataKey="week" tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
+          <XAxis dataKey="week" tick={{ fill: "#555562", fontSize: isMobile ? 9 : 11 }} axisLine={false} tickLine={false}
+            interval={isMobile ? 1 : 0} />
+          <YAxis tick={{ fill: "#555562", fontSize: 10 }} axisLine={false} tickLine={false} width={24} />
           <Tooltip content={<CustomTooltip />} />
-          <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{v}</span>} />
+          <Legend iconType="circle" iconSize={7}
+            formatter={(v) => <span style={{ fontSize: isMobile ? 10 : 11, color: "var(--text-secondary)" }}>{v}</span>} />
           <Area isAnimationActive={false} type="monotone" dataKey="applied" name="Applied" stroke="#3b82f6" strokeWidth={2} fill="url(#gApplied)" dot={false} />
           <Area isAnimationActive={false} type="monotone" dataKey="interviews" name="Interviews" stroke="#f59e0b" strokeWidth={2} fill="url(#gInterview)" dot={false} />
-          <Area isAnimationActive={false} type="monotone" dataKey="offers" name="Offers" stroke="#22c55e" strokeWidth={2} fill="url(#gOffer)" dot={false} />
         </AreaChart>
       </ResponsiveContainer>
     </ChartCard>
   );
 }
 
-// ── 3. Platform Success Rate ──────────────────────────────────────────────
-function PlatformChart({ platformPerf }) {
-  if (!platformPerf || platformPerf.length === 0) return null;
-  const data = platformPerf.map((p) => ({
-    name: p.name,
-    rate: parseFloat(p.rate),
-    total: p.total,
-  }));
+// ── computeStats ──────────────────────────────────────────────────────────
+function computeStats(filtered) {
+  const total = filtered.length;
+  if (total === 0) return null;
 
-  return (
-    <ChartCard title="Platform Success Rate">
-      <ResponsiveContainer width="100%" height={220} style={{ background: "transparent", outline: "none" }}>
-        <BarChart data={data} layout="vertical" style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <defs>
-            <linearGradient id="gPlatform" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#6c63ff" />
-              <stop offset="100%" stopColor="#22c55e" />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" horizontal={false} />
-          <XAxis type="number" tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
-          <YAxis type="category" dataKey="name" tick={{ fill: "#8b8b9a", fontSize: 12 }} axisLine={false} tickLine={false} width={100} />
-          <Tooltip content={<CustomTooltip formatter={(v) => `${v.toFixed(1)}%`} />} />
-          <Bar isAnimationActive={false} dataKey="rate" name="Success Rate" fill="url(#gPlatform)" radius={[0, 6, 6, 0]} barSize={16} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
+  const byStatus = { Applied: 0, Interview: 0, Offer: 0, Rejected: 0 };
+  const byPlatform = {};
+  const byWorkType = {};
+  const weeklyData = {};
+  const resumeData = {};
+  const roleData = {};
+
+  let totalResponseDays = 0, responseCount = 0;
+  const now = new Date();
+
+  filtered.forEach((app) => {
+    byStatus[app.status] = (byStatus[app.status] || 0) + 1;
+
+    if (app.platform) {
+      if (!byPlatform[app.platform]) byPlatform[app.platform] = { total: 0, interviews: 0, offers: 0 };
+      byPlatform[app.platform].total++;
+      if (app.status === "Interview") byPlatform[app.platform].interviews++;
+      if (app.status === "Offer") byPlatform[app.platform].offers++;
+    }
+
+    if (app.workType) byWorkType[app.workType] = (byWorkType[app.workType] || 0) + 1;
+
+    const dateForWeek = app.dateApplied || app.createdAt;
+    if (dateForWeek) {
+      const week = getWeekKey(dateForWeek);
+      if (!weeklyData[week]) weeklyData[week] = { applied: 0, interviews: 0, offers: 0 };
+      weeklyData[week].applied++;
+      if (app.status === "Interview") weeklyData[week].interviews++;
+      if (app.status === "Offer") weeklyData[week].offers++;
+    }
+
+    if (app.resumeVersion) {
+      if (!resumeData[app.resumeVersion]) resumeData[app.resumeVersion] = { total: 0, callbacks: 0 };
+      resumeData[app.resumeVersion].total++;
+      if (app.status === "Interview" || app.status === "Offer") resumeData[app.resumeVersion].callbacks++;
+    }
+
+    if (app.role) {
+      const r = app.role.toLowerCase();
+      const roleKey = r.includes("backend") ? "Backend"
+        : r.includes("frontend") ? "Frontend"
+        : r.includes("full") ? "Fullstack"
+        : r.includes("data") ? "Data"
+        : r.includes("ml") || r.includes("ai") ? "ML/AI"
+        : "Other";
+      if (!roleData[roleKey]) roleData[roleKey] = { total: 0, callbacks: 0 };
+      roleData[roleKey].total++;
+      if (app.status === "Interview" || app.status === "Offer") roleData[roleKey].callbacks++;
+    }
+
+    if (app.statusHistory && app.statusHistory.length > 1) {
+      const first = new Date(app.statusHistory[0].date);
+      const second = new Date(app.statusHistory[1].date);
+      const days = Math.round((second - first) / (1000 * 60 * 60 * 24));
+      if (days >= 0) { totalResponseDays += days; responseCount++; }
+    }
+  });
+
+  const ghostCutoff = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const ghostCount = filtered.filter((a) => {
+    if (a.status !== "Applied") return false;
+    return new Date(a.dateApplied || a.createdAt) < ghostCutoff;
+  }).length;
+  const ghostRate = total > 0 ? (ghostCount / total) * 100 : 0;
+
+  const platformPerf = Object.entries(byPlatform)
+    .map(([name, d]) => ({
+      name, total: d.total, responses: d.interviews + d.offers,
+      rate: d.total > 0 ? pct(d.interviews + d.offers, d.total) : "0.0",
+    }))
+    .sort((a, b) => parseFloat(b.rate) - parseFloat(a.rate));
+
+  const resumePerf = Object.entries(resumeData)
+    .map(([name, d]) => ({ name, total: d.total, rate: d.total > 0 ? pct(d.callbacks, d.total) : "0.0" }))
+    .sort((a, b) => parseFloat(b.rate) - parseFloat(a.rate));
+
+  const rolePerf = Object.entries(roleData)
+    .filter(([, d]) => d.total >= 2)
+    .map(([name, d]) => ({ name, total: d.total, rate: d.total > 0 ? pct(d.callbacks, d.total) : "0.0" }))
+    .sort((a, b) => parseFloat(b.rate) - parseFloat(a.rate));
+
+  const weeks = Object.entries(weeklyData).sort((a, b) => a[0].localeCompare(b[0]));
+  const weeksTotal = weeks.length;
+  const weeksActive = weeks.filter(([, d]) => d.applied > 0).length;
+  const avgPerActiveWeek = weeksActive > 0 ? filtered.length / weeksActive : 0;
+
+  let maxGapDays = 0;
+  const activeDates = filtered
+    .map((a) => new Date(a.dateApplied || a.createdAt))
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+  for (let i = 1; i < activeDates.length; i++) {
+    const gap = Math.round((activeDates[i] - activeDates[i - 1]) / (1000 * 60 * 60 * 24));
+    if (gap > maxGapDays) maxGapDays = gap;
+  }
+
+  const consistencyScore = weeksTotal > 0
+    ? Math.round((weeksActive / weeksTotal) * 100 * (1 - Math.min(1, maxGapDays / 30)))
+    : 0;
+
+  return {
+    total,
+    byStatus,
+    byWorkType,
+    platformPerf,
+    resumePerf,
+    rolePerf,
+    weeks: weeks.slice(-8),
+    callbackRate: pct(byStatus.Interview + byStatus.Offer, total) ?? "0.0",
+    offerRate: pct(byStatus.Offer, total) ?? "0.0",
+    rejectionRate: pct(byStatus.Rejected, total) ?? "0.0",
+    ghostCount,
+    ghostRate,
+    avgResponseDays: responseCount > 0 ? Math.round(totalResponseDays / responseCount) : null,
+    consistencyScore,
+    consistencyData: { weeksActive, weeksTotal, maxGapDays, avgPerActiveWeek },
+    responseByCompanyType: [],
+  };
 }
 
-// ── 4. Work Type Donut ────────────────────────────────────────────────────
-const WORK_COLORS = ["#6c63ff", "#3b82f6", "#f59e0b", "#22c55e", "#ec4899"];
-
-function WorkTypeChart({ byWorkType, total }) {
-  if (!byWorkType || !Object.keys(byWorkType).length) return null;
-  const data = Object.entries(byWorkType)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, value], i) => ({ name, value, fill: WORK_COLORS[i % WORK_COLORS.length] }));
-
-  return (
-    <ChartCard title="Work Type Split">
-      <ResponsiveContainer width="100%" height={240} style={{ background: "transparent", outline: "none" }}>
-        <PieChart style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <Pie isAnimationActive={false}
-            data={data}
-            cx="50%"
-            cy="50%"
-            innerRadius={55}
-            outerRadius={90}
-            paddingAngle={4}
-            dataKey="value"
-            stroke="none"
-            style={{ outline: "none", background: "transparent" }} tabIndex={-1}
-          >
-            {data.map((e, i) => <Cell key={i} fill={e.fill} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />)}
-          </Pie>
-          <Tooltip content={<CustomTooltip formatter={(v) => `${v} (${pct(v, total)}%)`} />} />
-          <Legend iconType="circle" iconSize={8} formatter={(v) => <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{v}</span>} />
-        </PieChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── 5. Tags Bar ───────────────────────────────────────────────────────────
-function TagsChart({ topTags, total }) {
-  if (!topTags || topTags.length === 0) return null;
-  const data = topTags.map(([tag, count]) => ({ name: tag, count, pct: Math.round((count / total) * 100) }));
-
-  return (
-    <ChartCard title="Top Application Tags">
-      <ResponsiveContainer width="100%" height={220} style={{ background: "transparent", outline: "none" }}>
-        <BarChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <defs>
-            <linearGradient id="gTag" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#6c63ff" />
-              <stop offset="100%" stopColor="#3b82f6" />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-          <XAxis dataKey="name" tick={{ fill: "#8b8b9a", fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
-          <Tooltip content={<CustomTooltip formatter={(v) => `${v} applications`} />} />
-          <Bar isAnimationActive={false} dataKey="count" name="Count" fill="url(#gTag)" radius={[6, 6, 0, 0]} barSize={32} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── 6. Conversion Line ────────────────────────────────────────────────────
-function ConversionChart({ byStatus }) {
-  const data = [
-    { name: "Applied", value: byStatus.Applied || 0 },
-    { name: "Interview", value: byStatus.Interview || 0 },
-    { name: "Offer", value: byStatus.Offer || 0 },
-  ];
-
-  return (
-    <ChartCard title="Conversion Funnel">
-      <ResponsiveContainer width="100%" height={220} style={{ background: "transparent", outline: "none" }}>
-        <LineChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <defs>
-            <linearGradient id="gLine" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#6c63ff" />
-              <stop offset="100%" stopColor="#22c55e" />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-          <XAxis dataKey="name" tick={{ fill: "#8b8b9a", fontSize: 12 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
-          <Tooltip content={<CustomTooltip formatter={(v) => `${v} applications`} />} />
-          <Line isAnimationActive={false}
-            type="monotone"
-            dataKey="value"
-            name="Count"
-            stroke="#6c63ff"
-            strokeWidth={3}
-            dot={{ fill: "#6c63ff", r: 6, strokeWidth: 0, style: { outline: "none" } }}
-            activeDot={{ r: 8, fill: "#a5b4fc", strokeWidth: 0, style: { outline: "none" } }}
-            style={{ outline: "none", background: "transparent" }} tabIndex={-1}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── 7. NEW: Response Time Histogram ──────────────────────────────────────
-function ResponseTimeCard({ avgResponseDays, fastestResponse, slowestResponse }) {
-  if (avgResponseDays === null) return null;
-  const data = [
-    { name: "Fastest", days: fastestResponse ?? 0, fill: "#22c55e" },
-    { name: "Average", days: avgResponseDays, fill: "#6c63ff" },
-    { name: "Slowest", days: slowestResponse ?? 0, fill: "#ef4444" },
-  ];
-
-  return (
-    <ChartCard title="Response Time (Days)">
-      <ResponsiveContainer width="100%" height={180} style={{ background: "transparent", outline: "none" }}>
-        <BarChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-          <XAxis dataKey="name" tick={{ fill: "#8b8b9a", fontSize: 12 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} />
-          <Tooltip content={<CustomTooltip formatter={(v) => `${v} day${v !== 1 ? "s" : ""}`} />} />
-          <Bar isAnimationActive={false} dataKey="days" name="Days" radius={[6, 6, 0, 0]} barSize={40} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-            {data.map((e, i) => <Cell key={i} fill={e.fill} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />)}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── 8. NEW: Platform Volume vs Response Scatter ───────────────────────────
-function PlatformScatterChart({ platformPerf }) {
-  if (!platformPerf || platformPerf.length < 2) return null;
-  const data = platformPerf.map((p) => ({
-    x: p.total,
-    y: parseFloat(p.rate),
-    z: p.responses + 1,
-    name: p.name,
-  }));
-
-  return (
-    <ChartCard title="Platform: Volume vs Success Rate">
-      <ResponsiveContainer width="100%" height={220} style={{ background: "transparent", outline: "none" }}>
-        <ScatterChart style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-          <XAxis type="number" dataKey="x" name="Applications" tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: "Apps Sent", position: "insideBottom", offset: -4, fill: "#555562", fontSize: 10 }} />
-          <YAxis type="number" dataKey="y" name="Success Rate" tick={{ fill: "#555562", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
-          <ZAxis type="number" dataKey="z" range={[60, 300]} />
-          <Tooltip
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) return null;
-              const d = payload[0]?.payload;
-              return (
-                <div style={tooltipStyle}>
-                  <div style={tooltipLabelStyle}>{d?.name}</div>
-                  <div style={{ color: "#8b8b9a", marginTop: 4 }}>Apps sent: <span style={{ color: "#f0f0f2" }}>{d?.x}</span></div>
-                  <div style={{ color: "#8b8b9a" }}>Success rate: <span style={{ color: "#22c55e" }}>{d?.y}%</span></div>
-                </div>
-              );
-            }}
-          />
-          <Scatter data={data} fill="#6c63ff" style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
-        </ScatterChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── 9. NEW: Effort Radar (multi-axis overview) ────────────────────────────
-function EffortRadarChart({ stats }) {
-  const total = stats.total || 1;
-  const data = [
-    { subject: "Volume", A: Math.min(100, total * 5) },
-    { subject: "Callback", A: parseFloat(stats.callbackRate) || 0 },
-    { subject: "Offer Rate", A: parseFloat(stats.offerRate) || 0 },
-    { subject: "Platforms", A: Math.min(100, stats.platformPerf.length * 25) },
-    { subject: "Work Types", A: Math.min(100, Object.keys(stats.byWorkType).length * 33) },
-  ];
-
-  return (
-    <ChartCard title="Activity Overview (Radar)">
-      <ResponsiveContainer width="100%" height={240} style={{ background: "transparent", outline: "none" }}>
-        <RadarChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <defs>
-            <linearGradient id="gRadar" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#6c63ff" stopOpacity={0.6} />
-              <stop offset="100%" stopColor="#22c55e" stopOpacity={0.3} />
-            </linearGradient>
-          </defs>
-          <PolarGrid stroke="rgba(255,255,255,0.08)" />
-          <PolarAngleAxis dataKey="subject" tick={{ fill: "#8b8b9a", fontSize: 11 }} />
-          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-          <Radar name="Score" dataKey="A" stroke="#6c63ff" fill="url(#gRadar)" fillOpacity={0.7} dot={{ fill: "#6c63ff", r: 4, strokeWidth: 0, style: { outline: "none" } }} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
-          <Tooltip content={<CustomTooltip formatter={(v) => `${v.toFixed(0)} pts`} />} />
-        </RadarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── 10. NEW: Daily Velocity mini-bar ──────────────────────────────────────
-function DailyVelocityChart({ weeks }) {
-  if (!weeks || weeks.length < 2) return null;
-  // Show all weeks as a simple volume bar
-  const data = weeks.map(([key, d]) => ({
-    week: new Date(key).toLocaleDateString("en-IN", { month: "short", day: "2-digit" }),
-    total: d.applied + (d.interviews || 0) + (d.offers || 0),
-  }));
-
-  return (
-    <ChartCard title="Weekly Activity Volume">
-      <ResponsiveContainer width="100%" height={140} style={{ background: "transparent", outline: "none" }}>
-        <BarChart data={data} style={{ outline: "none", background: "transparent" }} tabIndex={-1}>
-          <defs>
-            <linearGradient id="gVelocity" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#6c63ff" stopOpacity={0.9} />
-              <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.5} />
-            </linearGradient>
-          </defs>
-          <XAxis dataKey="week" tick={{ fill: "#555562", fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis tick={false} axisLine={false} tickLine={false} width={0} />
-          <Tooltip content={<CustomTooltip formatter={(v) => `${v} activities`} />} />
-          <Bar isAnimationActive={false} dataKey="total" name="Total Activity" fill="url(#gVelocity)" radius={[4, 4, 0, 0]} barSize={24} style={{ outline: "none", background: "transparent" }} tabIndex={-1} />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartCard>
-  );
-}
-
-// ── Main Analytics ────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────
 export default function Analytics({ applications }) {
   const [timeFilter, setTimeFilter] = useState("all");
+  const isMobile = useIsMobile();
 
   const filtered = useMemo(() => {
     if (timeFilter === "all") return applications;
     const cutoff = new Date();
     if (timeFilter === "7d") cutoff.setDate(cutoff.getDate() - 7);
     if (timeFilter === "30d") cutoff.setDate(cutoff.getDate() - 30);
-    return applications.filter((a) => new Date(a.createdAt) >= cutoff);
+    cutoff.setHours(0, 0, 0, 0);
+    // ✅ Fixed: check both dateApplied AND createdAt, prefer dateApplied
+    return applications.filter((a) => {
+      const date = a.dateApplied ? new Date(a.dateApplied) : new Date(a.createdAt);
+      return date >= cutoff;
+    });
   }, [applications, timeFilter]);
 
-  const stats = useMemo(() => {
-    const total = filtered.length;
-    if (total === 0) return null;
-
-    const byStatus = { Applied: 0, Interview: 0, Offer: 0, Rejected: 0 };
-    const byPlatform = {};
-    const byWorkType = {};
-    const weeklyData = {};
-    const tagCounts = {};
-    let totalResponseDays = 0, responseCount = 0;
-    let fastestResponse = Infinity, slowestResponse = 0;
-
-    filtered.forEach((app) => {
-      byStatus[app.status] = (byStatus[app.status] || 0) + 1;
-
-      if (app.platform) {
-        if (!byPlatform[app.platform]) byPlatform[app.platform] = { total: 0, interviews: 0, offers: 0 };
-        byPlatform[app.platform].total++;
-        if (app.status === "Interview") byPlatform[app.platform].interviews++;
-        if (app.status === "Offer") byPlatform[app.platform].offers++;
-      }
-
-      if (app.workType) byWorkType[app.workType] = (byWorkType[app.workType] || 0) + 1;
-
-      if (app.dateApplied) {
-        const week = getWeekKey(app.dateApplied);
-        if (!weeklyData[week]) weeklyData[week] = { applied: 0, interviews: 0, offers: 0 };
-        weeklyData[week].applied++;
-        if (app.status === "Interview") weeklyData[week].interviews++;
-        if (app.status === "Offer") weeklyData[week].offers++;
-      }
-
-      if (app.tags && Array.isArray(app.tags))
-        app.tags.forEach((t) => { tagCounts[t] = (tagCounts[t] || 0) + 1; });
-      if (app.workType) tagCounts[app.workType] = (tagCounts[app.workType] || 0) + 1;
-
-      if (app.statusHistory && app.statusHistory.length > 1) {
-        const first = new Date(app.statusHistory[0].date);
-        const second = new Date(app.statusHistory[1].date);
-        const days = Math.round((second - first) / (1000 * 60 * 60 * 24));
-        if (days >= 0) {
-          totalResponseDays += days;
-          responseCount++;
-          fastestResponse = Math.min(fastestResponse, days);
-          slowestResponse = Math.max(slowestResponse, days);
-        }
-      }
-    });
-
-    const avgResponseDays = responseCount > 0 ? Math.round(totalResponseDays / responseCount) : null;
-    const callbackRate = pct(byStatus.Interview + byStatus.Offer, total);
-    const offerRate = pct(byStatus.Offer, total);
-    const rejectionRate = pct(byStatus.Rejected, total);
-
-    const platformPerf = Object.entries(byPlatform)
-      .map(([name, d]) => ({
-        name, total: d.total, responses: d.interviews + d.offers,
-        rate: d.total > 0 ? pct(d.interviews + d.offers, d.total) : "0.0",
-      }))
-      .sort((a, b) => parseFloat(b.rate) - parseFloat(a.rate));
-
-    const weeks = Object.entries(weeklyData)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .slice(-8);
-
-    const topTags = Object.entries(tagCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6);
-
-    return {
-      total, byStatus, byPlatform, byWorkType, platformPerf, weeks,
-      callbackRate, offerRate, rejectionRate,
-      avgResponseDays,
-      fastestResponse: fastestResponse === Infinity ? null : fastestResponse,
-      slowestResponse: slowestResponse === 0 && responseCount === 0 ? null : slowestResponse,
-      topTags,
-      isLowData: total < MIN_DATA_THRESHOLD,
-    };
-  }, [filtered]);
+  const stats = useMemo(() => computeStats(filtered), [filtered]);
 
   if (!stats) {
     return (
       <div className="empty-state">
-        <div className="empty-state-icon" style={{ fontSize: 32, marginBottom: 10, opacity: 0.4 }}>—</div>
+        <div style={{ fontSize: 36, marginBottom: 12, opacity: 0.5 }}>📭</div>
         <h3>No data to analyze</h3>
-        <p>Add applications to see analytics</p>
+        <p>
+          {timeFilter !== "all"
+            ? `No applications in the last ${timeFilter === "7d" ? "7 days" : "30 days"}. Try "All time".`
+            : "Add your first application to start tracking."}
+        </p>
+        {timeFilter !== "all" && (
+          <button className="btn-ghost" style={{ marginTop: 12 }} onClick={() => setTimeFilter("all")}>
+            View All Time
+          </button>
+        )}
       </div>
     );
   }
 
+  // Donut charts: stacked on mobile, side-by-side on desktop
+  const donutSection = isMobile ? (
+    <>
+      <StatusDonutChart byStatus={stats.byStatus} total={stats.total} />
+      <WorkTypeChart byWorkType={stats.byWorkType} total={stats.total} />
+    </>
+  ) : (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <StatusDonutChart byStatus={stats.byStatus} total={stats.total} />
+      <WorkTypeChart byWorkType={stats.byWorkType} total={stats.total} />
+    </div>
+  );
+
   return (
     <div>
-      {/* Recharts global focus/bg reset */}
       <style dangerouslySetInnerHTML={{ __html: RECHARTS_RESET }} />
+
       {/* Time filter */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 20, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, alignItems: "center", flexWrap: "wrap" }}>
         {[
-          { value: "7d", label: "Last 7 days" },
-          { value: "30d", label: "Last 30 days" },
+          { value: "7d", label: "Last 7d" },
+          { value: "30d", label: "Last 30d" },
           { value: "all", label: "All time" },
         ].map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => setTimeFilter(opt.value)}
-            style={{
-              padding: "6px 14px",
-              borderRadius: "var(--radius-sm)",
-              border: `1px solid ${timeFilter === opt.value ? "rgba(108,99,255,0.4)" : "var(--border)"}`,
-              background: timeFilter === opt.value ? "rgba(108,99,255,0.12)" : "transparent",
-              color: timeFilter === opt.value ? "#6c63ff" : "var(--text-muted)",
-              fontSize: 12, fontWeight: 500, cursor: "pointer",
-              fontFamily: "'DM Sans', sans-serif",
-              transition: "all 0.15s",
-              outline: "none",
-            }}
-          >
+          <button key={opt.value} onClick={() => setTimeFilter(opt.value)} style={{
+            padding: isMobile ? "5px 10px" : "6px 14px",
+            borderRadius: "var(--radius-sm)",
+            border: `1px solid ${timeFilter === opt.value ? "rgba(108,99,255,0.4)" : "var(--border)"}`,
+            background: timeFilter === opt.value ? "rgba(108,99,255,0.12)" : "transparent",
+            color: timeFilter === opt.value ? "#6c63ff" : "var(--text-muted)",
+            fontSize: isMobile ? 11 : 12, fontWeight: 500, cursor: "pointer",
+            fontFamily: "'DM Sans', sans-serif", transition: "all 0.15s", outline: "none",
+          }}>
             {opt.label}
           </button>
         ))}
-        {stats.isLowData && (
-          <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
-            {stats.total} application{stats.total !== 1 ? "s" : ""} — metrics may not be representative
-          </span>
-        )}
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
+          {stats.total} app{stats.total !== 1 ? "s" : ""}
+        </span>
       </div>
 
-      {/* Insights */}
-      <InsightsBox stats={stats} />
+      <HealthScore stats={stats} />
 
-      {/* KPI cards */}
       <div className="stats-grid" style={{ marginBottom: 20 }}>
-        <MetricCard label="Callback Rate" value={stats.callbackRate !== null ? `${stats.callbackRate}%` : "—"} sub="Interview + Offer" color="#6c63ff" lowData={stats.isLowData ? stats.total : null} />
-        <MetricCard label="Offer Rate" value={stats.offerRate !== null ? `${stats.offerRate}%` : "—"} sub="Of all applications" color="#22c55e" lowData={stats.isLowData ? stats.total : null} />
-        <MetricCard label="Rejection Rate" value={stats.rejectionRate !== null ? `${stats.rejectionRate}%` : "—"} sub="Of all applications" color="#ef4444" lowData={stats.isLowData ? stats.total : null} />
-        <MetricCard label="Total Applications" value={stats.total} sub="In selected period" color="#f59e0b" />
+        <MetricCard label="Callback Rate" value={`${stats.callbackRate}%`} sub="Interview + Offer" color="#6c63ff" />
+        <MetricCard label="Offer Rate" value={`${stats.offerRate}%`} sub="Of all applications" color="#22c55e" />
+        <MetricCard label="Ghost Rate" value={`${stats.ghostRate.toFixed(0)}%`} sub="No reply 14d+" color={stats.ghostRate > 50 ? "#ef4444" : "#f59e0b"} />
+        <MetricCard label="Total Applied" value={stats.total} sub="In selected period" color="#3b82f6" />
       </div>
 
-      {/* Funnel */}
+      <GhostRateCard stats={stats} />
       <Funnel byStatus={stats.byStatus} total={stats.total} />
+      <ConsistencyCard stats={stats} />
 
-      {/* Row 1: Status Donut + Work Type Donut */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
-        <StatusDonutChart byStatus={stats.byStatus} />
-        <WorkTypeChart byWorkType={stats.byWorkType} total={stats.total} />
-      </div>
+      {donutSection}
 
-      {/* Radar */}
-      <EffortRadarChart stats={stats} />
+      <WeeklyTrendChart weeks={stats.weeks} total={stats.total} />
+      <PlatformChart platformPerf={stats.platformPerf} total={stats.total} />
+      <ResumePerformanceCard stats={stats} />
+      <RoleInsightsCard stats={stats} />
 
-      {/* Weekly Trend */}
-      <WeeklyTrendChart weeks={stats.weeks} />
-
-      {/* Daily velocity */}
-      <DailyVelocityChart weeks={stats.weeks} />
-
-      {/* Row 2: Platform Bar + Scatter */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 0 }}>
-        <PlatformChart platformPerf={stats.platformPerf} />
-        <PlatformScatterChart platformPerf={stats.platformPerf} />
-      </div>
-
-      {/* Tags */}
-      <TagsChart topTags={stats.topTags} total={stats.total} />
-
-      {/* Conversion Line */}
-      <ConversionChart byStatus={stats.byStatus} />
-
-      {/* Response Time */}
-      <ResponseTimeCard
-        avgResponseDays={stats.avgResponseDays}
-        fastestResponse={stats.fastestResponse}
-        slowestResponse={stats.slowestResponse}
-      />
+      <InsightsEngine applications={applications} />
     </div>
   );
 }

@@ -2,7 +2,6 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "../../../../lib/db";
 
-
 export async function PATCH(req, { params }) {
   const { userId } = await auth();
   if (!userId)
@@ -11,7 +10,6 @@ export async function PATCH(req, { params }) {
   const { id } = await params;
   const updates = await req.json();
 
-  // Verify ownership
   const existing = await prisma.application.findFirst({
     where: { id, clerkUserId: userId },
   });
@@ -32,13 +30,6 @@ export async function PATCH(req, { params }) {
       }),
       ...(updates.status !== undefined && { status: updates.status }),
       ...(updates.workType !== undefined && { workType: updates.workType }),
-      ...(updates.priority !== undefined && { priority: updates.priority }),
-      ...(updates.recruiterName !== undefined && {
-        recruiterName: updates.recruiterName,
-      }),
-      ...(updates.recruiterContact !== undefined && {
-        recruiterContact: updates.recruiterContact,
-      }),
       ...(updates.followUpDate !== undefined && {
         followUpDate: updates.followUpDate
           ? new Date(updates.followUpDate)
@@ -48,10 +39,10 @@ export async function PATCH(req, { params }) {
       ...(updates.resumeVersion !== undefined && {
         resumeVersion: updates.resumeVersion,
       }),
-      ...(updates.attachmentLink !== undefined && {
-        attachmentLink: updates.attachmentLink,
-      }),
       ...(updates.notes !== undefined && { notes: updates.notes }),
+      ...(updates.rejectionReason !== undefined && {
+        rejectionReason: updates.rejectionReason || null,
+      }),
       ...(updates.statusHistory !== undefined && {
         statusHistory: updates.statusHistory,
       }),
@@ -69,7 +60,7 @@ export async function DELETE(req, { params }) {
   const { id } = params;
 
   await prisma.application.deleteMany({
-    where: { id, clerkUserId: userId }, // deleteMany so it silently fails if not found/not owned
+    where: { id, clerkUserId: userId },
   });
 
   return NextResponse.json({ ok: true });
