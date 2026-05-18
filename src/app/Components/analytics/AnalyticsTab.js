@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import InsightsEngine from "./analytics/Insightsengine";
+import InsightsEngine from "./Insightsengine";
 import {
   PieChart,
   Pie,
@@ -340,9 +340,12 @@ function ConsistencyCard({ stats }) {
   );
 }
 
-// ── Resume Performance ────────────────────────────────────────────────────
+// ── Resume Performance (Redesigned) ───────────────────────────────────────
+// Radial ring per resume version with stat breakdown below
 function ResumePerformanceCard({ stats }) {
+  const isMobile = useIsMobile();
   const { resumePerf } = stats;
+
   if (!resumePerf || resumePerf.length < 2) {
     return (
       <ChartCard title="Resume Performance">
@@ -356,40 +359,164 @@ function ResumePerformanceCard({ stats }) {
   }
 
   const best = resumePerf.reduce((a, b) => parseFloat(a.rate) > parseFloat(b.rate) ? a : b);
+  const ringColors = ["#22c55e", "#6c63ff", "#f59e0b", "#3b82f6", "#ec4899"];
+  const R = 28;
+  const CIRC = 2 * Math.PI * R;
+  const ringSize = isMobile ? 72 : 88;
+  const cx = ringSize / 2;
+  const strokeW = 7;
+
   return (
     <ChartCard title="Resume Performance">
-      {resumePerf.map((r) => (
-        <div key={r.name} style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 500 }}>{r.name}</span>
-              {r.name === best.name && (
-                <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: "rgba(34,197,94,0.12)", color: "#22c55e" }}>BEST</span>
-              )}
+      {/* Rings row */}
+      <div style={{
+        display: "flex",
+        gap: isMobile ? 12 : 20,
+        justifyContent: "center",
+        flexWrap: "wrap",
+        marginBottom: 20,
+      }}>
+        {resumePerf.map((r, i) => {
+          const rate = parseFloat(r.rate);
+          const filled = (rate / 100) * CIRC;
+          const color = ringColors[i % ringColors.length];
+          const isBest = r.name === best.name;
+
+          return (
+            <div key={r.name} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+              {/* Ring */}
+              <div style={{ position: "relative" }}>
+                <svg width={ringSize} height={ringSize} viewBox={`0 0 ${ringSize} ${ringSize}`}>
+                  {/* Track */}
+                  <circle
+                    cx={cx} cy={cx} r={R}
+                    fill="none"
+                    stroke="rgba(255,255,255,0.06)"
+                    strokeWidth={strokeW}
+                  />
+                  {/* Fill */}
+                  <circle
+                    cx={cx} cy={cx} r={R}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={strokeW}
+                    strokeLinecap="round"
+                    strokeDasharray={`${filled} ${CIRC}`}
+                    transform={`rotate(-90 ${cx} ${cx})`}
+                    style={{ transition: "stroke-dasharray 0.7s ease" }}
+                  />
+                </svg>
+                {/* Center label */}
+                <div style={{
+                  position: "absolute", inset: 0,
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                }}>
+                  <span style={{
+                    fontSize: isMobile ? 13 : 15,
+                    fontWeight: 800,
+                    color,
+                    fontFamily: "'Syne', sans-serif",
+                    lineHeight: 1,
+                  }}>{rate.toFixed(0)}%</span>
+                </div>
+              </div>
+
+              {/* Name + badge */}
+              <div style={{ textAlign: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginBottom: 2 }}>
+                  <span style={{ fontSize: isMobile ? 11 : 12, color: "var(--text-secondary)", fontWeight: 500 }}>
+                    {r.name}
+                  </span>
+                  {isBest && (
+                    <span style={{
+                      fontSize: 9, fontWeight: 700,
+                      padding: "1px 6px", borderRadius: 99,
+                      background: "rgba(34,197,94,0.15)", color: "#22c55e",
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}>BEST</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{r.total} app{r.total !== 1 ? "s" : ""}</div>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{r.total} apps</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: parseFloat(r.rate) > 15 ? "#22c55e" : "var(--text-primary)" }}>{r.rate}%</span>
+          );
+        })}
+      </div>
+
+      {/* Divider */}
+      <div style={{ height: "1px", background: "rgba(255,255,255,0.05)", marginBottom: 14 }} />
+
+      {/* Comparison table */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {resumePerf.map((r, i) => {
+          const rate = parseFloat(r.rate);
+          const color = ringColors[i % ringColors.length];
+          const isBest = r.name === best.name;
+          return (
+            <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: color, flexShrink: 0,
+              }} />
+              <span style={{ fontSize: 12, color: "var(--text-secondary)", minWidth: 70 }}>{r.name}</span>
+              <div style={{
+                flex: 1,
+                height: 6,
+                background: "rgba(255,255,255,0.05)",
+                borderRadius: 99,
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  height: "100%",
+                  width: `${Math.min(100, rate * 2.5)}%`,
+                  background: color,
+                  borderRadius: 99,
+                  transition: "width 0.6s",
+                  opacity: isBest ? 1 : 0.55,
+                }} />
+              </div>
+              <span style={{
+                fontSize: 12, fontWeight: 700,
+                color: isBest ? "#22c55e" : "var(--text-primary)",
+                minWidth: 44, textAlign: "right",
+                fontFamily: "'Syne', sans-serif",
+              }}>{r.rate}%</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", minWidth: 40, textAlign: "right" }}>
+                {r.total} apps
+              </span>
             </div>
-          </div>
-          <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 99, overflow: "hidden" }}>
-            <div style={{
-              height: "100%", width: `${Math.min(100, parseFloat(r.rate) * 3)}%`,
-              background: r.name === best.name ? "linear-gradient(90deg, #22c55e, #6c63ff)" : "linear-gradient(90deg, #6c63ff, #3b82f6)",
-              borderRadius: 99, transition: "width 0.6s",
-            }} />
-          </div>
+          );
+        })}
+      </div>
+
+      {/* Insight callout */}
+      {parseFloat(best.rate) > 0 && (
+        <div style={{
+          marginTop: 14,
+          fontSize: 12,
+          color: "#22c55e",
+          background: "rgba(34,197,94,0.07)",
+          border: "1px solid rgba(34,197,94,0.18)",
+          borderRadius: 8,
+          padding: "8px 12px",
+        }}>
+          ✦ <strong>{best.name}</strong> has the highest callback rate at {best.rate}% — use it as your primary resume.
         </div>
-      ))}
+      )}
     </ChartCard>
   );
 }
 
-// ── Role Insights ─────────────────────────────────────────────────────────
+// ── Role Insights (Redesigned) ────────────────────────────────────────────
+// Grouped bar chart: callback rate + volume side by side per role
 function RoleInsightsCard({ stats }) {
+  const isMobile = useIsMobile();
+
   if (stats.total < THRESHOLDS.ROLE_INSIGHTS) {
     return <LockedCard title="Role Insights" unlockAt={THRESHOLDS.ROLE_INSIGHTS} current={stats.total} icon="🎯" />;
   }
+
   const { rolePerf } = stats;
   if (!rolePerf || rolePerf.length < 2) {
     return (
@@ -400,31 +527,176 @@ function RoleInsightsCard({ stats }) {
       </ChartCard>
     );
   }
+
   const best = rolePerf[0];
   const worst = rolePerf[rolePerf.length - 1];
+
+  // Build chart data
+  const chartData = rolePerf.map((r) => ({
+    role: r.name,
+    callbackRate: parseFloat(r.rate),
+    applications: r.total,
+  }));
+
+  // Max values for scaling
+  const maxRate = Math.max(...chartData.map((d) => d.callbackRate), 10);
+  const maxApps = Math.max(...chartData.map((d) => d.applications), 1);
+
+  const barH = isMobile ? 32 : 38;
+  const gap = 10;
+  const totalHeight = chartData.length * (barH * 2 + gap + 18) + 20;
+
+  // Color scale by rate
+  const getBarColor = (rate) => {
+    if (rate >= 40) return "#22c55e";
+    if (rate >= 20) return "#6c63ff";
+    if (rate >= 5) return "#f59e0b";
+    return "#ef4444";
+  };
+
   return (
     <ChartCard title="Role Insights">
+      {/* Insight headline */}
       {best && parseFloat(best.rate) > 0 && worst && best.name !== worst.name && (
-        <div style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7, borderLeft: "2px solid #6c63ff", paddingLeft: 12, marginBottom: 16 }}>
+        <div style={{
+          fontSize: 13,
+          color: "var(--text-secondary)",
+          lineHeight: 1.7,
+          borderLeft: "2px solid #6c63ff",
+          paddingLeft: 12,
+          marginBottom: 20,
+        }}>
           <strong style={{ color: "var(--text-primary)" }}>{best.name}</strong> roles perform{" "}
           <strong style={{ color: "#22c55e" }}>
-            {parseFloat(worst.rate) > 0 ? `${(parseFloat(best.rate) / parseFloat(worst.rate)).toFixed(1)}x` : "significantly"} better
-          </strong>{" "}than <strong style={{ color: "var(--text-primary)" }}>{worst.name}</strong>.
+            {parseFloat(worst.rate) > 0
+              ? `${(parseFloat(best.rate) / parseFloat(worst.rate)).toFixed(1)}×`
+              : "significantly"} better
+          </strong>{" "}
+          than <strong style={{ color: "var(--text-primary)" }}>{worst.name}</strong>.
         </div>
       )}
-      {rolePerf.map((r) => (
-        <div key={r.name} style={{ marginBottom: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{r.name}</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: parseFloat(r.rate) > 20 ? "#22c55e" : "var(--text-primary)" }}>
-              {r.rate}% <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11 }}>({r.total})</span>
-            </span>
-          </div>
-          <div style={{ height: 3, background: "rgba(255,255,255,0.05)", borderRadius: 99, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${Math.min(100, parseFloat(r.rate) * 3)}%`, background: r === best ? "#22c55e" : "#6c63ff", borderRadius: 99 }} />
-          </div>
-        </div>
-      ))}
+
+      {/* Custom dual-bar chart */}
+      <div style={{ display: "flex", flexDirection: "column", gap: gap }}>
+        {chartData.map((d) => {
+          const rateColor = getBarColor(d.callbackRate);
+          const rateWidth = maxRate > 0 ? (d.callbackRate / maxRate) * 100 : 0;
+          const appWidth = (d.applications / maxApps) * 100;
+          const isBest = d.role === best.name;
+
+          return (
+            <div key={d.role} style={{
+              background: isBest ? "rgba(34,197,94,0.04)" : "rgba(255,255,255,0.015)",
+              border: `1px solid ${isBest ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)"}`,
+              borderRadius: 10,
+              padding: "12px 14px",
+            }}>
+              {/* Role name + badge */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{
+                  fontSize: isMobile ? 12 : 13,
+                  fontWeight: 600,
+                  color: "var(--text-primary)",
+                  fontFamily: "'Syne', sans-serif",
+                }}>{d.role}</span>
+                {isBest && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700,
+                    padding: "1px 7px", borderRadius: 99,
+                    background: "rgba(34,197,94,0.15)", color: "#22c55e",
+                  }}>TOP</span>
+                )}
+                <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
+                  {d.applications} app{d.applications !== 1 ? "s" : ""}
+                </span>
+              </div>
+
+              {/* Callback rate bar */}
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Callback rate</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700,
+                    color: rateColor,
+                    fontFamily: "'Syne', sans-serif",
+                  }}>{d.callbackRate.toFixed(1)}%</span>
+                </div>
+                <div style={{
+                  height: barH * 0.22,
+                  background: "rgba(255,255,255,0.06)",
+                  borderRadius: 99,
+                  overflow: "hidden",
+                }}>
+                  <div style={{
+                    height: "100%",
+                    width: `${rateWidth}%`,
+                    background: rateColor,
+                    borderRadius: 99,
+                    transition: "width 0.7s ease",
+                    boxShadow: `0 0 8px ${rateColor}55`,
+                  }} />
+                </div>
+              </div>
+
+              {/* Volume bar */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>Volume share</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {((d.applications / stats.total) * 100).toFixed(0)}%
+                  </span>
+                </div>
+                <div style={{
+                  height: barH * 0.22,
+                  background: "rgba(255,255,255,0.06)",
+                  borderRadius: 99,
+                  overflow: "hidden",
+                }}>
+                  <div style={{
+                    height: "100%",
+                    width: `${appWidth}%`,
+                    background: "rgba(108,99,255,0.5)",
+                    borderRadius: 99,
+                    transition: "width 0.7s ease",
+                  }} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div style={{
+        display: "flex", gap: 16, marginTop: 14,
+        fontSize: 11, color: "var(--text-muted)",
+        flexWrap: "wrap",
+      }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 24, height: 4, borderRadius: 99, background: "#22c55e", display: "inline-block" }} />
+          Callback rate
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 24, height: 4, borderRadius: 99, background: "rgba(108,99,255,0.5)", display: "inline-block" }} />
+          Volume share
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />
+          ≥40%
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#6c63ff", display: "inline-block" }} />
+          20–39%
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#f59e0b", display: "inline-block" }} />
+          5–19%
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ef4444", display: "inline-block" }} />
+          &lt;5%
+        </span>
+      </div>
     </ChartCard>
   );
 }
@@ -773,7 +1045,6 @@ export default function Analytics({ applications }) {
     if (timeFilter === "7d") cutoff.setDate(cutoff.getDate() - 7);
     if (timeFilter === "30d") cutoff.setDate(cutoff.getDate() - 30);
     cutoff.setHours(0, 0, 0, 0);
-    // ✅ Fixed: check both dateApplied AND createdAt, prefer dateApplied
     return applications.filter((a) => {
       const date = a.dateApplied ? new Date(a.dateApplied) : new Date(a.createdAt);
       return date >= cutoff;
@@ -801,7 +1072,6 @@ export default function Analytics({ applications }) {
     );
   }
 
-  // Donut charts: stacked on mobile, side-by-side on desktop
   const donutSection = isMobile ? (
     <>
       <StatusDonutChart byStatus={stats.byStatus} total={stats.total} />

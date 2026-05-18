@@ -12,6 +12,7 @@ const navItems = [
   { id: "analytics", icon: "◈", label: "Analytics" },
   { id: "resume", icon: "⬡", label: "Resume Matcher" },
   { id: "prep", icon: "◎", label: "Prep Tracker" },
+   { id: "community", icon: "◎", label: "Community" },
 ];
 
 const bottomItems = navItems.slice(0, 4);

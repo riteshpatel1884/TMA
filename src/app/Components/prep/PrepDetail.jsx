@@ -595,7 +595,7 @@
 "use client";
 // components/prep/PrepDetail.jsx
 import { useState, useMemo } from "react";
-import AddTopicsModal from "../AddJobModal";
+import AddTopicsModal from "../applications/AddJobModal";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApplications } from "../../context/ApplicationsContext";
-import Dashboard from "../../Components/Dashboard";
-import AddJobModal from "../../Components/AddJobModal";
+import Dashboard from "../../Components/dashboard/Dashboard";
+import AddJobModal from "../../Components/applications/AddJobModal";
 import DashboardSkeleton from "./Dashboardskeleton";
 
 export default function DashboardPage() {

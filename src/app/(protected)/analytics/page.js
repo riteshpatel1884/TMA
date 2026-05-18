@@ -27,7 +27,7 @@
 "use client";
 
 import { useApplications } from "../../context/ApplicationsContext";
-import Analytics from "../../Components/AnalyticsTab";
+import Analytics from "../../Components/analytics/AnalyticsTab";
 import { AnalyticsSkeleton } from "./Analyticsskeleton";
 
 export default function AnalyticsPage() {

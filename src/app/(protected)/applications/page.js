@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useApplications } from "../../context/ApplicationsContext";
-import ApplicationsTable from "../../Components/ApplicationsTab";
-import AddJobModal from "../../Components/AddJobModal";
+import ApplicationsTable from "../../Components/applications/ApplicationsTab";
+import AddJobModal from "../../Components/applications/AddJobModal";
 import ApplicationsSkeleton from "./Applicationsskeleton";
 
 export default function ApplicationsPage() {

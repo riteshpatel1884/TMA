@@ -90,50 +90,7 @@ export default function DashboardSkeleton() {
         ))}
       </div>
 
-      {/* Status Breakdown + Platform Performance */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
-        <div className="card">
-          <Bone w={120} h={12} style={{ marginBottom: 16 }} />
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <Bone w={60} h={10} />
-                <Bone w={40} h={10} />
-              </div>
-              <div style={{ height: 5, borderRadius: 4, background: "var(--bg-hover)", overflow: "hidden", position: "relative" }}>
-                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%)", animation: "skeletonShimmer 1.6s ease-in-out infinite" }} />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="card">
-          <Bone w={140} h={12} style={{ marginBottom: 16 }} />
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <Bone w={70} h={10} />
-                <Bone w={50} h={10} />
-              </div>
-              <div style={{ height: 5, borderRadius: 4, background: "var(--bg-hover)", overflow: "hidden", position: "relative" }}>
-                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%)", animation: "skeletonShimmer 1.6s ease-in-out infinite" }} />
-              </div>
-            </div>
-          ))}
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-            <Bone w={90} h={9} style={{ marginBottom: 8 }} />
-            <Bone w={50} h={22} radius={6} style={{ marginBottom: 6 }} />
-            <Bone w={110} h={9} />
-          </div>
-        </div>
-      </div>
+      
 
       {/* Activity Timeline */}
       <div className="card" style={{ marginBottom: 20 }}>

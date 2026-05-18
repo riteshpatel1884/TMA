@@ -52,12 +52,6 @@ function getStreakData(applications) {
   return { streak, appliedToday, missedYesterday };
 }
 
-function fmtResponseDays(d) {
-  if (d === null || d === undefined) return "—";
-  if (d === 0) return "< 1 day";
-  return `${d}d`;
-}
-
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function StreakCard({ applications }) {
@@ -209,7 +203,6 @@ function TodaysPlan({ applications }) {
   const [newTask, setNewTask] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // Auto-generate follow-up tasks from apps
   const followUps = useMemo(() => {
     return applications
       .filter((a) => {
@@ -528,7 +521,6 @@ function TimelineModal({ events, onClose }) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -585,7 +577,6 @@ function TimelineModal({ events, onClose }) {
           </button>
         </div>
 
-        {/* Scrollable body */}
         <div style={{ overflowY: "auto", padding: "18px 22px 22px", flex: 1 }}>
           <TimelineList events={events} cardBg="var(--bg-card)" />
         </div>
@@ -639,11 +630,10 @@ function ActivityTimeline({ applications }) {
             alignItems: "center",
             marginBottom: 14,
           }}
-         >
+        >
           <div className="card-title" style={{ marginBottom: 0 }}>
             Activity Timeline
           </div>
-          
         </div>
 
         <TimelineList events={preview} cardBg="var(--bg-card)" />
@@ -687,79 +677,7 @@ function ActivityTimeline({ applications }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-export default function Dashboard({
-  applications,
-  onAddClick,
-  onUpdateStatus,
-  setActiveTab,
-}) {
-  const stats = useMemo(() => {
-    const total = applications.length;
-    const interviews = applications.filter(
-      (a) => a.status === "Interview",
-    ).length;
-    const offers = applications.filter((a) => a.status === "Offer").length;
-    const rejected = applications.filter((a) => a.status === "Rejected").length;
-    const applied = applications.filter((a) => a.status === "Applied").length;
-    const callbackRate =
-      total > 0 ? (((interviews + offers) / total) * 100).toFixed(1) : 0;
-
-    let totalDays = 0,
-      responseCount = 0;
-    applications.forEach((app) => {
-      if (app.statusHistory && app.statusHistory.length > 1) {
-        const first = new Date(app.statusHistory[0].date);
-        const second = new Date(app.statusHistory[1].date);
-        const days = Math.round((second - first) / (1000 * 60 * 60 * 24));
-        if (days >= 0) {
-          totalDays += days;
-          responseCount++;
-        }
-      }
-    });
-    const avgResponseDays =
-      responseCount > 0 ? Math.round(totalDays / responseCount) : null;
-
-    const platformMap = {};
-    applications.forEach((app) => {
-      if (!app.platform) return;
-      if (!platformMap[app.platform])
-        platformMap[app.platform] = { total: 0, interviews: 0, offers: 0 };
-      platformMap[app.platform].total++;
-      if (app.status === "Interview") platformMap[app.platform].interviews++;
-      if (app.status === "Offer") platformMap[app.platform].offers++;
-    });
-
-    const platformStats = Object.entries(platformMap)
-      .map(([name, data]) => ({
-        name,
-        total: data.total,
-        responses: data.interviews + data.offers,
-        rate:
-          data.total > 0
-            ? (((data.interviews + data.offers) / data.total) * 100).toFixed(0)
-            : 0,
-      }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 4);
-
-    return {
-      total,
-      interviews,
-      offers,
-      rejected,
-      applied,
-      callbackRate,
-      avgResponseDays,
-      platformStats,
-    };
-  }, [applications]);
-
-  const recentApps = applications
-    .slice()
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 5);
-
+export default function Dashboard({ applications, onAddClick }) {
   if (applications.length === 0) {
     return (
       <div>
@@ -780,214 +698,9 @@ export default function Dashboard({
 
   return (
     <div>
-      {/* Streak & daily target */}
       <StreakCard applications={applications} />
-
-      {/* Today's plan */}
       <TodaysPlan applications={applications} />
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
-        {/* Status breakdown */}
-        <div className="card">
-          <div className="card-title">Status Breakdown</div>
-          {["Applied", "Interview", "Offer", "Rejected"].map((status) => {
-            const count = applications.filter(
-              (a) => a.status === status,
-            ).length;
-            const pct = stats.total > 0 ? (count / stats.total) * 100 : 0;
-            return (
-              <div key={status} style={{ marginBottom: 12 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 5,
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    {status}
-                  </span>
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {count} &middot; {pct.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="progress-bar-wrap">
-                  <div
-                    className="progress-bar"
-                    style={{
-                      width: `${pct}%`,
-                      background: STATUS_COLORS[status],
-                    }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Platform performance */}
-        <div className="card">
-          <div className="card-title">Platform Performance</div>
-          {stats.platformStats.length === 0 ? (
-            <div
-              style={{
-                color: "var(--text-muted)",
-                fontSize: 12,
-                paddingTop: 8,
-              }}
-            >
-              No platform data yet.
-            </div>
-          ) : (
-            stats.platformStats.map((p) => (
-              <div key={p.name} style={{ marginBottom: 12 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 5,
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    {p.name}
-                  </span>
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {p.rate}% ({p.responses}/{p.total})
-                  </span>
-                </div>
-                <div className="progress-bar-wrap">
-                  <div
-                    className="progress-bar"
-                    style={{
-                      width: `${Math.max(p.rate, 2)}%`,
-                      background: "var(--accent)",
-                    }}
-                  />
-                </div>
-              </div>
-            ))
-          )}
-
-          {stats.avgResponseDays !== null && (
-            <div
-              style={{
-                marginTop: 16,
-                paddingTop: 14,
-                borderTop: "1px solid var(--border)",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  marginBottom: 4,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
-                }}
-              >
-                Avg Response Time
-              </div>
-              <div
-                style={{
-                  fontSize: 20,
-                  fontWeight: 800,
-                  fontFamily: "'Syne', sans-serif",
-                  color: "var(--yellow)",
-                }}
-              >
-                {fmtResponseDays(stats.avgResponseDays)}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  marginTop: 2,
-                }}
-              >
-                Callback ratio: {stats.callbackRate}%
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Activity timeline */}
       <ActivityTimeline applications={applications} />
-
-      {/* Recent Applications */}
-      <div className="card">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 14,
-          }}
-        >
-          <div className="card-title" style={{ marginBottom: 0 }}>
-            Recent Applications
-          </div>
-          <button
-            className="btn-ghost"
-            style={{ fontSize: 11 }}
-            onClick={() => setActiveTab("applications")}
-          >
-            View all
-          </button>
-        </div>
-        {recentApps.length === 0 ? (
-          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-            No recent applications.
-          </div>
-        ) : (
-          <div className="table-wrapper" style={{ border: "none" }}>
-            <table className="jobs-table">
-              <thead>
-                <tr>
-                  <th>Company</th>
-                  <th>Role</th>
-                  <th>Platform</th>
-                  <th>Applied</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentApps.map((app) => (
-                  <tr key={app.id}>
-                    <td className="company-cell">{app.company}</td>
-                    <td>{app.role}</td>
-                    <td>{app.platform || "—"}</td>
-                    <td>
-                      {app.dateApplied
-                        ? new Date(app.dateApplied).toLocaleDateString(
-                            "en-IN",
-                            { day: "2-digit", month: "short" },
-                          )
-                        : "—"}
-                    </td>
-                    <td>
-                      <span
-                        className={`badge badge-${app.status.toLowerCase()}`}
-                      >
-                        {app.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
